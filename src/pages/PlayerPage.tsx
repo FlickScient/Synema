@@ -226,7 +226,7 @@ export function PlayerPage() {
           className="absolute inset-0 w-full h-full"
           allowFullScreen
           allow="autoplay; fullscreen"
-          style={{ border: 'none' }}
+          style={{ border: 'none', background: '#000' }}
           sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
         />
       ) : null}
