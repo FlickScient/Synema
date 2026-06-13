@@ -9,13 +9,12 @@ import type { MovieDetails } from '../types/tmdb';
 // ─── Sources ──────────────────────────────────────────────────────────────────
 
 const EMBED_SOURCES = [
-  { id: 'embedsu',      label: 'Source 1', url: (id: string) => `https://embed.su/embed/movie/${id}` },
-  { id: 'vidsrc',      label: 'Source 2', url: (id: string) => `https://vidsrc.me/embed/movie?tmdb=${id}` },
-  { id: 'vidsrcto',    label: 'Source 3', url: (id: string) => `https://vidsrc.to/embed/movie/${id}` },
-  { id: 'smashy',      label: 'Source 4', url: (id: string) => `https://player.smashy.stream/movie/${id}` },
-  { id: 'multiembed',  label: 'Source 5', url: (id: string) => `https://multiembed.mov/?video_id=${id}&tmdb=1` },
+  { id: 'vidsrcto',   label: 'Source 1', url: (id) => `https://vidsrc.to/embed/movie/${id}` },
+  { id: 'onlyflix',   label: 'Source 2', url: (id) => `https://vidsrc.me/embed/movie?tmdb=${id}` },
+  { id: 'embedsu',    label: 'Source 3', url: (id) => `https://embed.su/embed/movie/${id}` },
+  { id: 'smashy',     label: 'Source 4', url: (id) => `https://player.smashy.stream/movie/${id}` },
+  { id: 'autoembed',  label: 'Source 5', url: (id) => `https://autoembed.cc/movie/tmdb/${id}` },
 ];
-
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const S = {
