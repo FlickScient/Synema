@@ -4,7 +4,7 @@ import { ArrowLeft, Film, Upload, ChevronRight, X, Plus } from 'lucide-react';
 import { getMovieDetails, getImageUrl, POSTER_SIZE, BACKDROP_SIZE } from '../services/tmdb';
 import { EMBED_SOURCES, type SourceId } from '../services/sources';
 import { searchArchive, type ArchiveItem } from '../services/archive';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../services/supabase';
 import type { MovieDetails } from '../types/tmdb';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
