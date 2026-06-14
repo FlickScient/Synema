@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { MyListProvider } from './context/MyListContext';
+import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { FlickScientOrb } from './components/FlickScient';
 import { HomePage } from './pages/HomePage';
@@ -10,24 +11,24 @@ import { PlayerPage } from './pages/PlayerPage';
 import { MyListPage } from './pages/MyListPage';
 import { MoviesPage } from './pages/MoviesPage';
 import { SeriesPage } from './pages/SeriesPage';
+import { AuthPage } from './pages/AuthPage';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
-
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
-
   return null;
 }
 
 function AppLayout() {
   const { pathname } = useLocation();
   const isPlayerPage = pathname.startsWith('/player');
+  const isAuthPage = pathname.startsWith('/auth');
 
   return (
     <>
-      <Navbar />
+      {!isPlayerPage && !isAuthPage && <Navbar />}
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/search" element={<SearchPage />} />
@@ -36,6 +37,7 @@ function AppLayout() {
         <Route path="/my-list" element={<MyListPage />} />
         <Route path="/movies" element={<MoviesPage />} />
         <Route path="/series" element={<SeriesPage />} />
+        <Route path="/auth" element={<AuthPage />} />
         <Route
           path="*"
           element={
@@ -49,7 +51,7 @@ function AppLayout() {
           }
         />
       </Routes>
-      {!isPlayerPage && <FlickScientOrb />}
+      {isPlayerPage && <FlickScientOrb />}
     </>
   );
 }
@@ -57,10 +59,12 @@ function AppLayout() {
 function App() {
   return (
     <BrowserRouter>
-      <MyListProvider>
-        <ScrollToTop />
-        <AppLayout />
-      </MyListProvider>
+      <AuthProvider>
+        <MyListProvider>
+          <ScrollToTop />
+          <AppLayout />
+        </MyListProvider>
+      </AuthProvider>
     </BrowserRouter>
   );
 }
