@@ -30,14 +30,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
+  try {
+    const { data, error } = await supabase
       .from('profiles')
       .select('id, email, role')
       .eq('id', userId)
       .single();
+    
+    if (error) {
+      console.error('Profile fetch error:', error);
+      // If profile doesn't exist, create it
+      if (error.code === 'PGRST116') {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase.from('profiles').insert({
+            id: userId,
+            email: user.email,
+            role: 'user'
+          });
+          // Fetch again
+          const { data: newProfile } = await supabase
+            .from('profiles')
+            .select('id, email, role')
+            .eq('id', userId)
+            .single();
+          if (newProfile) setProfile(newProfile as Profile);
+        }
+      }
+      return;
+    }
     if (data) setProfile(data as Profile);
-  };
-
+  } catch (err) {
+    console.error('fetchProfile failed:', err);
+  }
+};
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
