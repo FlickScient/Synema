@@ -155,7 +155,7 @@ export function PlayerPage() {
   const [started, setStarted]       = useState(false);
   const [embedIdx, setEmbedIdx]     = useState(0);
   const [activeSource, setActive]   = useState<ActiveSource>('embed');
-
+  const { isAdmin } = useAuth();
   // Archive
   const [archiveItem, setArchiveItem]       = useState<ArchiveItem | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
@@ -179,11 +179,7 @@ export function PlayerPage() {
   useEffect(() => {
     if (!id) return;
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: profile } = await supabase
-        .from('profiles').select('role').eq('id', user.id).single();
-      if (profile?.role === 'admin') setIsAdmin(true);
+      import { useAuth } from '../context/AuthContext';
       const { data: rows } = await supabase
         .from('movie_uploads')
         .select('id, video_url, quality, language')
