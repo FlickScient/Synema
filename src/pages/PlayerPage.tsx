@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 
 type SourceType = 'source1' | 'source2' | 'source3' | 'source4' | 'source5' | 'archive' | 'upload';
 
-export default function PlayerPage() {
+export function PlayerPage() {
   const { id: tmdbId } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
