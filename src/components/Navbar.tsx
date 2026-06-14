@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Film, Search, User, List } from 'lucide-react';
+import { Film, Search } from 'lucide-react';
 import { useState } from 'react';
+import { ProfileMenu } from './ProfileMenu';
 
 export function Navbar() {
   const navigate = useNavigate();
@@ -20,6 +21,8 @@ export function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-synema-bg via-synema-bg/95 to-transparent">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
+
+          {/* Logo */}
           <div className="flex items-center gap-8">
             <NavLink to="/" className="flex items-center gap-2 group">
               <Film className="w-8 h-8 text-synema-violet" />
@@ -29,13 +32,14 @@ export function Navbar() {
               </span>
             </NavLink>
 
+            {/* Desktop nav links */}
             <div className="hidden md:flex items-center gap-1">
               {[
                 { to: '/', label: 'Home' },
                 { to: '/movies', label: 'Movies' },
                 { to: '/series', label: 'Series' },
-                { to: '/my-list', label: 'My List', icon: List },
-              ].map(({ to, label, icon: Icon }) => (
+                { to: '/my-list', label: 'My List' },
+              ].map(({ to, label }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -47,13 +51,13 @@ export function Navbar() {
                     }`
                   }
                 >
-                  {Icon && <Icon className="w-4 h-4" />}
                   {label}
                 </NavLink>
               ))}
             </div>
           </div>
 
+          {/* Right side */}
           <div className="flex items-center gap-4">
             {searchOpen ? (
               <form onSubmit={handleSearch} className="relative animate-scale-in">
@@ -63,7 +67,7 @@ export function Navbar() {
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Search movies..."
                   autoFocus
-                  className="w-64 px-4 py-2 bg-synema-card border border-synema-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-synema-violet focus:ring-1 focus:ring-synema-violet"
+                  className="w-64 px-4 py-2 bg-synema-card border border-synema-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-synema-violet text-sm"
                 />
                 <button
                   type="button"
@@ -82,13 +86,13 @@ export function Navbar() {
               </button>
             )}
 
-            <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center cursor-pointer hover:shadow-lg hover:shadow-synema-violet/20 transition-shadow">
-              <User className="w-4 h-4 text-white" />
-            </div>
+            {/* Profile menu — replaces the old broken avatar */}
+            <ProfileMenu />
           </div>
         </div>
       </div>
 
+      {/* Mobile bottom nav */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-synema-surface border-t border-synema-border">
         <div className="flex items-center justify-around py-2">
           {[
