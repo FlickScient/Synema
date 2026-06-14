@@ -5,6 +5,7 @@ import { getMovieDetails, getImageUrl, BACKDROP_SIZE, POSTER_SIZE } from '../ser
 import { searchArchive, type ArchiveItem } from '../services/archive';
 import { supabase } from '../services/supabase';
 import type { MovieDetails } from '../types/tmdb';
+import { useAuth } from '../context/AuthContext';
 
 // ─── Sources ──────────────────────────────────────────────────────────────────
 
@@ -162,7 +163,6 @@ export function PlayerPage() {
   const [archiveSearched, setArchiveSearched] = useState(false);
 
   // Upload / admin
-  const [isAdmin, setIsAdmin]           = useState(false);
   const [uploads, setUploads]           = useState<UploadRow[]>([]);
   const [uploadIdx, setUploadIdx]       = useState(0);
   const [showModal, setShowModal]       = useState(false);
@@ -175,18 +175,6 @@ export function PlayerPage() {
     getMovieDetails(parseInt(id)).then(setMovie).catch(console.error);
   }, [id]);
 
-  // ── Auth / uploads ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!id) return;
-    (async () => {
-      import { useAuth } from '../context/AuthContext';
-      const { data: rows } = await supabase
-        .from('movie_uploads')
-        .select('id, video_url, quality, language')
-        .eq('tmdb_id', parseInt(id));
-      if (rows) setUploads(rows);
-    })();
-  }, [id]);
 
   // ── Archive lazy search ────────────────────────────────────────────────────
   useEffect(() => {
