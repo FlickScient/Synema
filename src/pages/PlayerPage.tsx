@@ -1,11 +1,24 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../services/supabase';
+import { searchArchive } from '../services/archive';
+import { getMovieDetails, getImageUrl, BACKDROP_SIZE, POSTER_SIZE } from '../services/tmdb';
+import type { MovieDetails } from '../types/tmdb';
 
 type SourceType = 'source1' | 'source2' | 'source3' | 'source4' | 'source5' | 'archive' | 'upload';
 
+interface UploadRow {
+  id: string;
+  video_url: string;
+  quality: string;
+  language: string;
+}
+
 export function PlayerPage() {
-  const { id: tmdbId } = useParams<{ id: string }>();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -14,12 +27,7 @@ export function PlayerPage() {
   const gestureStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastTapRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
-  // Movie info
-  const [title, setTitle] = useState('Loading...');
-  const [year, setYear] = useState<number | undefined>();
-  const [backdropUrl, setBackdropUrl] = useState<string | undefined>();
-
-  // Player state
+  const [movie, setMovie] = useState<MovieDetails | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -30,203 +38,144 @@ export function PlayerPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
-  const [activeSource, setActiveSource] = useState<SourceType>('source1');
-  const [lastPlayedTime, setLastPlayedTime] = useState<number | null>(null);
   const [showSplash, setShowSplash] = useState(true);
-  const [isAdmin] = useState(false);
+  const [lastPlayedTime, setLastPlayedTime] = useState<number | null>(null);
+  const [activeSource, setActiveSource] = useState<SourceType>('source1');
+  const [uploads, setUploads] = useState<UploadRow[]>([]);
+  const [archiveUrl, setArchiveUrl] = useState<string | null>(null);
+  const [archiveSearched, setArchiveSearched] = useState(false);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [brightness, setBrightness] = useState(100);
+  const [gestureBrightness, setGestureBrightness] = useState<number | null>(null);
+  const [gestureVolume, setGestureVolume] = useState<number | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadUrl, setUploadUrl] = useState('');
   const [uploadQuality, setUploadQuality] = useState('1080p');
   const [uploadLanguage, setUploadLanguage] = useState('English');
-  const [brightness, setBrightness] = useState(100);
-  const [gestureBrightness, setGestureBrightness] = useState<number | null>(null);
-  const [gestureVolume, setGestureVolume] = useState<number | null>(null);
-  const [currentLanguage, setCurrentLanguage] = useState('English');
-  const [uploadedSources, setUploadedSources] = useState<string[]>([]);
-  const [archiveUrl, setArchiveUrl] = useState<string | null>(null);
+  const [uploadSaving, setUploadSaving] = useState(false);
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
 
-  // Fetch movie info from TMDB
   useEffect(() => {
-    if (!tmdbId) return;
-    const TMDB_KEY = import.meta.env.VITE_TMDB_API_KEY;
-    fetch(`https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_KEY}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setTitle(data.title || 'Unknown');
-        setYear(data.release_date ? new Date(data.release_date).getFullYear() : undefined);
-        if (data.backdrop_path) {
-          setBackdropUrl(`https://image.tmdb.org/t/p/original${data.backdrop_path}`);
-        }
-      })
-      .catch(console.error);
-  }, [tmdbId]);
+    if (!id) return;
+    getMovieDetails(parseInt(id)).then(setMovie).catch(console.error);
+  }, [id]);
 
-  // Load saved progress
   useEffect(() => {
-    if (!tmdbId) return;
-    const saved = localStorage.getItem(`synema_progress_${tmdbId}`);
+    if (!id) return;
+    const saved = localStorage.getItem(`synema_progress_${id}`);
     if (saved) setLastPlayedTime(parseFloat(saved));
-  }, [tmdbId]);
+  }, [id]);
 
-  // Save progress every 5s
+  useEffect(() => {
+    if (!id) return;
+    supabase
+      .from('movie_uploads')
+      .select('id, video_url, quality, language')
+      .eq('tmdb_id', parseInt(id))
+      .then(({ data }) => { if (data) setUploads(data); });
+  }, [id]);
+
+  useEffect(() => {
+    if (activeSource !== 'archive' || archiveSearched || !movie) return;
+    setArchiveSearched(true);
+    setArchiveLoading(true);
+    searchArchive(movie.title).then(result => {
+      setArchiveUrl(result?.videoUrl || null);
+      setArchiveLoading(false);
+    });
+  }, [activeSource, archiveSearched, movie]);
+
   useEffect(() => {
     const interval = setInterval(() => {
-      if (videoRef.current && isPlaying && tmdbId) {
-        localStorage.setItem(`synema_progress_${tmdbId}`, videoRef.current.currentTime.toString());
+      if (videoRef.current && isPlaying && id) {
+        localStorage.setItem(`synema_progress_${id}`, videoRef.current.currentTime.toString());
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [tmdbId, isPlaying]);
+  }, [id, isPlaying]);
 
-  // Orientation handling
   useEffect(() => {
-    const handle = () => {};
-    window.addEventListener('orientationchange', handle);
-    window.addEventListener('resize', handle);
+    const update = () => setOrientation(window.innerHeight > window.innerWidth ? 'portrait' : 'landscape');
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
+    update();
     return () => {
-      window.removeEventListener('orientationchange', handle);
-      window.removeEventListener('resize', handle);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
     };
   }, []);
 
-  // Auto-hide controls
-  useEffect(() => {
-    if (!showControls || isLocked) return;
+  const resetControlsTimer = useCallback(() => {
+    setShowControls(true);
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    controlsTimeoutRef.current = setTimeout(() => {
-      if (!isLocked) setShowControls(false);
-    }, 3000);
-    const container = containerRef.current;
-    if (!container) return;
-    const show = () => setShowControls(true);
-    container.addEventListener('mousemove', show);
-    container.addEventListener('touchstart', show);
-    return () => {
-      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-      container.removeEventListener('mousemove', show);
-      container.removeEventListener('touchstart', show);
-    };
-  }, [showControls, isLocked]);
+    if (!isLocked) {
+      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
+    }
+  }, [isLocked]);
 
-  // Fullscreen change
   useEffect(() => {
-    const handle = async () => {
-      const isFs = !!document.fullscreenElement;
-      setIsFullscreen(isFs);
-      if (isFs && screen.orientation?.lock) {
-        await screen.orientation.lock('landscape-primary').catch(() => {});
-      }
-    };
-    document.addEventListener('fullscreenchange', handle);
-    return () => document.removeEventListener('fullscreenchange', handle);
+    resetControlsTimer();
+    return () => { if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); };
   }, []);
 
-  // Keyboard shortcuts
   useEffect(() => {
-    const handle = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case 'Escape': navigate(-1); break;
-        case ' ':
-          e.preventDefault();
-          setIsPlaying((p) => !p);
-          break;
-        case 'ArrowLeft':
-          if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
-          break;
-        case 'ArrowRight':
-          if (videoRef.current) videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10);
-          break;
-        case 'm': setIsMuted((p) => !p); break;
-        case 'f':
-          if (!isFullscreen) containerRef.current?.requestFullscreen?.();
-          else document.exitFullscreen?.();
-          break;
+    const handler = async () => {
+      const fs = !!document.fullscreenElement;
+      setIsFullscreen(fs);
+      if (fs && (screen.orientation as any)?.lock) {
+        try { await (screen.orientation as any).lock('landscape-primary'); } catch {}
       }
     };
-    window.addEventListener('keydown', handle);
-    return () => window.removeEventListener('keydown', handle);
-  }, [duration, isFullscreen, navigate]);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
 
-  // Video events
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
     const onTime = () => setCurrentTime(video.currentTime);
-    const onDuration = () => setDuration(video.duration);
-    const onVolume = () => setVolume(video.volume);
+    const onDur = () => setDuration(video.duration);
+    const onVol = () => setVolume(video.volume);
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
     video.addEventListener('timeupdate', onTime);
-    video.addEventListener('durationchange', onDuration);
-    video.addEventListener('volumechange', onVolume);
+    video.addEventListener('durationchange', onDur);
+    video.addEventListener('volumechange', onVol);
     return () => {
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
       video.removeEventListener('timeupdate', onTime);
-      video.removeEventListener('durationchange', onDuration);
-      video.removeEventListener('volumechange', onVolume);
+      video.removeEventListener('durationchange', onDur);
+      video.removeEventListener('volumechange', onVol);
     };
   }, []);
 
-  // Gesture handlers
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (activeSource !== 'source1' || e.button !== 0) return;
-    gestureStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    setShowControls(true);
-    if (!gestureStartRef.current || !videoRef.current || activeSource !== 'source1') return;
-    const deltaX = e.clientX - gestureStartRef.current.x;
-    const deltaY = e.clientY - gestureStartRef.current.y;
-    const W = containerRef.current?.clientWidth || 1;
-
-    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-      videoRef.current.currentTime = Math.max(0, Math.min(duration, videoRef.current.currentTime + (deltaX / W) * 60));
-      gestureStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
-    }
-    if (e.clientX < W / 3 && Math.abs(deltaY) > 50) {
-      const nb = Math.max(0, Math.min(200, brightness - deltaY * 0.5));
-      setBrightness(nb);
-      setGestureBrightness(nb);
-      gestureStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
-    }
-    if (e.clientX > (W * 2) / 3 && Math.abs(deltaY) > 50 && videoRef.current) {
-      const nv = Math.max(0, Math.min(1, volume - deltaY * 0.005));
-      videoRef.current.volume = nv;
-      setVolume(nv);
-      setGestureVolume(nv * 100);
-      gestureStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
-    }
-  };
-
-  const handleMouseUp = () => {
-    gestureStartRef.current = null;
-    setTimeout(() => { setGestureBrightness(null); setGestureVolume(null); }, 1000);
-  };
-
-  // Double tap
-  const handleTap = (e: React.TouchEvent<HTMLDivElement>) => {
-    const now = Date.now();
-    const tap = { x: e.touches[0].clientX, y: e.touches[0].clientY, time: now };
-    if (
-      lastTapRef.current &&
-      now - lastTapRef.current.time < 300 &&
-      Math.abs(tap.x - lastTapRef.current.x) < 50 &&
-      Math.abs(tap.y - lastTapRef.current.y) < 50
-    ) {
-      if (!videoRef.current) return;
-      const W = containerRef.current?.clientWidth || 1;
-      if (tap.x < W / 2) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
-      else videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10);
-      lastTapRef.current = null;
-    } else {
-      lastTapRef.current = tap;
-      if (activeSource === 'source1') setShowControls((p) => !p);
-    }
-  };
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const video = videoRef.current;
+      switch (e.key) {
+        case 'Escape': navigate(-1); break;
+        case ' ':
+          e.preventDefault();
+          if (video) { isPlaying ? video.pause() : video.play(); }
+          break;
+        case 'ArrowLeft':
+          if (video) video.currentTime = Math.max(0, video.currentTime - 10);
+          break;
+        case 'ArrowRight':
+          if (video) video.currentTime = Math.min(duration, video.currentTime + 10);
+          break;
+        case 'm':
+          if (video) { video.muted = !video.muted; setIsMuted(v => !v); }
+          break;
+        case 'f': handleFullscreen(); break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isPlaying, duration, navigate]);
 
   const formatTime = (t: number) => {
     if (!isFinite(t)) return '0:00';
@@ -237,410 +186,373 @@ export function PlayerPage() {
 
   const handlePlay = () => {
     setShowSplash(false);
-    if (videoRef.current) {
-      if (lastPlayedTime !== null) videoRef.current.currentTime = lastPlayedTime;
-      videoRef.current.play().catch(() => {});
+    const video = videoRef.current;
+    if (video) {
+      if (lastPlayedTime) video.currentTime = lastPlayedTime;
+      video.play().catch(() => {});
     }
   };
 
   const handleFullscreen = async () => {
+    const isNative = activeSource === 'archive' || activeSource === 'upload';
+    const el = isNative ? videoRef.current : iframeRef.current;
+    if (!el) return;
     if (!isFullscreen) {
-      await containerRef.current?.requestFullscreen?.();
-      if (screen.orientation?.lock) await screen.orientation.lock('landscape-primary').catch(() => {});
+      try { await el.requestFullscreen(); } catch {}
     } else {
-      await document.exitFullscreen?.();
-      if (screen.orientation?.unlock) screen.orientation.unlock();
+      try { await document.exitFullscreen(); } catch {}
     }
   };
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleSeekClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!videoRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     videoRef.current.currentTime = ((e.clientX - rect.left) / rect.width) * duration;
   };
 
-  const getSourceUrl = (source: SourceType): string => {
-    switch (source) {
-      case 'source1': return `https://embed.su/embed/movie/${tmdbId}`;
-      case 'source2': return `https://vidsrc.me/embed/movie?tmdb=${tmdbId}`;
-      case 'source3': return `https://vidsrc.to/embed/movie/${tmdbId}`;
-      case 'source4': return `https://player.smashy.stream/movie/${tmdbId}`;
-      case 'source5': return `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1`;
+  const getSourceUrl = (): string => {
+    if (!id) return '';
+    switch (activeSource) {
+      case 'source1': return `https://embed.su/embed/movie/${id}`;
+      case 'source2': return `https://vidsrc.me/embed/movie?tmdb=${id}`;
+      case 'source3': return `https://vidsrc.to/embed/movie/${id}`;
+      case 'source4': return `https://player.smashy.stream/movie/${id}`;
+      case 'source5': return `https://multiembed.mov/?video_id=${id}&tmdb=1`;
       case 'archive': return archiveUrl || '';
-      case 'upload': return uploadedSources[0] || '';
+      case 'upload': return uploads[0]?.video_url || '';
       default: return '';
     }
   };
 
-  // Styles
-  const containerStyle: React.CSSProperties = {
-    position: 'fixed', inset: 0, width: '100%', height: '100dvh',
-    backgroundColor: '#000', overflow: 'hidden',
-    display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center', zIndex: 50,
-    filter: `brightness(${brightness}%)`,
+  const isNativeSource = activeSource === 'archive' || activeSource === 'upload';
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const now = Date.now();
+    const touch = e.touches[0];
+    const tap = { x: touch.clientX, y: touch.clientY, time: now };
+    if (
+      lastTapRef.current &&
+      now - lastTapRef.current.time < 300 &&
+      Math.abs(tap.x - lastTapRef.current.x) < 60
+    ) {
+      if (!videoRef.current || !isNativeSource) return;
+      const isLeft = tap.x < (containerRef.current?.clientWidth || 0) / 2;
+      videoRef.current.currentTime = isLeft
+        ? Math.max(0, videoRef.current.currentTime - 10)
+        : Math.min(duration, videoRef.current.currentTime + 10);
+      lastTapRef.current = null;
+    } else {
+      lastTapRef.current = tap;
+      gestureStartRef.current = { x: touch.clientX, y: touch.clientY, time: now };
+      resetControlsTimer();
+    }
   };
 
-  const videoContainerStyle: React.CSSProperties = {
-    position: 'relative', width: '100%', height: '100%', backgroundColor: '#000',
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!gestureStartRef.current || !isNativeSource || !videoRef.current) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - gestureStartRef.current.x;
+    const dy = touch.clientY - gestureStartRef.current.y;
+    const W = containerRef.current?.clientWidth || 1;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 20) {
+      const delta = (dx / W) * 60;
+      videoRef.current.currentTime = Math.max(0, Math.min(duration, videoRef.current.currentTime + delta));
+      gestureStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    } else if (Math.abs(dy) > 20) {
+      if (touch.clientX < W / 2) {
+        const nb = Math.max(0, Math.min(200, brightness - dy * 0.5));
+        setBrightness(nb);
+        setGestureBrightness(nb);
+      } else {
+        const nv = Math.max(0, Math.min(1, volume - dy * 0.005));
+        videoRef.current.volume = nv;
+        setVolume(nv);
+        setGestureVolume(Math.round(nv * 100));
+      }
+      gestureStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    }
   };
 
-  const videoStyle: React.CSSProperties = {
-    width: '100%', height: '100%', objectFit: objectFit,
-    display: activeSource === 'source1' && !showSplash ? 'block' : 'none',
+  const handleTouchEnd = () => {
+    gestureStartRef.current = null;
+    setTimeout(() => { setGestureBrightness(null); setGestureVolume(null); }, 1200);
   };
 
-  const iframeStyle: React.CSSProperties = {
-    width: '100%', height: '100%', border: 'none',
-    display: activeSource !== 'source1' && !showSplash ? 'block' : 'none',
-    position: 'absolute', inset: 0, zIndex: 3,
+  const handleSaveUpload = async () => {
+    if (!uploadUrl || !id) return;
+    setUploadSaving(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase.from('movie_uploads').insert({
+      tmdb_id: parseInt(id),
+      title: movie?.title || '',
+      video_url: uploadUrl,
+      quality: uploadQuality,
+      language: uploadLanguage,
+      uploaded_by: user?.id,
+    }).select().single();
+    if (!error && data) {
+      setUploads(p => [...p, data]);
+      setShowUploadModal(false);
+      setUploadUrl('');
+    }
+    setUploadSaving(false);
   };
 
-  const splashStyle: React.CSSProperties = {
-    position: 'absolute', inset: 0,
-    backgroundImage: backdropUrl ? `url(${backdropUrl})` : undefined,
-    backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: '#000',
-    display: showSplash ? 'flex' : 'none',
-    flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    filter: 'brightness(0.25)', zIndex: 1,
-  };
+  const backdropUrl = movie?.backdrop_path ? getImageUrl(movie.backdrop_path, BACKDROP_SIZE) : undefined;
+  const sources: { id: SourceType; label: string }[] = [
+    { id: 'source1', label: 'Source 1' },
+    { id: 'source2', label: 'Source 2' },
+    { id: 'source3', label: 'Source 3' },
+    { id: 'source4', label: 'Source 4' },
+    { id: 'source5', label: 'Source 5' },
+    { id: 'archive', label: 'Archive' },
+    ...(uploads.length > 0 || isAdmin ? [{ id: 'upload' as SourceType, label: `Upload${uploads.length > 0 ? ` (${uploads.length})` : ''}` }] : []),
+  ];
 
-  const splashOverlayStyle: React.CSSProperties = {
-    position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.3)',
-    display: showSplash ? 'flex' : 'none',
-    flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 2,
-  };
-
-  const playButtonStyle: React.CSSProperties = {
-    width: 80, height: 80, borderRadius: '50%',
-    border: '2px solid rgba(255,255,255,0.8)',
-    backgroundColor: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    cursor: 'pointer', transition: 'transform 0.3s ease', marginBottom: 40,
-  };
-
-  const playButtonIconStyle: React.CSSProperties = {
-    width: 0, height: 0,
-    borderLeft: '20px solid rgba(255,255,255,0.9)',
-    borderTop: '12px solid transparent', borderBottom: '12px solid transparent', marginLeft: 5,
-  };
-
-  const splashTextStyle: React.CSSProperties = {
-    position: 'absolute', bottom: 40, left: 0, right: 0,
-    textAlign: 'center', color: '#fff', fontSize: 24, fontWeight: 700,
-    textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-  };
-
-  const lastPlayedStyle: React.CSSProperties = {
-    position: 'absolute', bottom: 160,
-    color: 'rgba(255,255,255,0.8)', fontSize: 14,
-    textShadow: '0 1px 4px rgba(0,0,0,0.5)',
-  };
-
-  const topBarStyle: React.CSSProperties = {
-    position: 'absolute', top: 0, left: 0, right: 0, height: 60,
-    background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)',
-    display: showControls && !isLocked ? 'flex' : 'none',
-    alignItems: 'center', justifyContent: 'space-between',
-    paddingLeft: 16, paddingRight: 16, color: '#fff',
-    zIndex: 10, transition: 'opacity 0.3s ease', opacity: showControls ? 1 : 0,
-  };
-
-  const centerControlsStyle: React.CSSProperties = {
-    position: 'absolute', top: '50%', left: '50%',
-    transform: 'translate(-50%, -50%)',
-    display: activeSource === 'source1' && !showSplash && (showControls || isLocked) ? 'flex' : 'none',
-    alignItems: 'center', justifyContent: 'center', gap: 30, zIndex: 8,
-  };
-
-  const controlButtonStyle: React.CSSProperties = {
-    width: 50, height: 50, borderRadius: '50%',
-    backgroundColor: 'rgba(255,255,255,0.2)', border: 'none',
-    color: '#fff', cursor: 'pointer', fontSize: 20,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    transition: 'background-color 0.2s ease',
-  };
-
-  const bottomControlsStyle: React.CSSProperties = {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',
-    display: activeSource === 'source1' && !showSplash && showControls && !isLocked ? 'flex' : 'none',
-    flexDirection: 'column', padding: '20px 16px 16px', gap: 12, zIndex: 9,
-    transition: 'opacity 0.3s ease', opacity: showControls ? 1 : 0,
-  };
-
-  const seekBarStyle: React.CSSProperties = {
-    width: '100%', height: 4, backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 2, cursor: 'pointer', position: 'relative', overflow: 'hidden',
-  };
-
-  const seekProgressStyle: React.CSSProperties = {
-    height: '100%', backgroundColor: '#7c3aed',
-    width: `${(currentTime / duration) * 100}%`, borderRadius: 2,
-  };
-
-  const sourcePillsStyle: React.CSSProperties = {
-    display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8,
-  };
-
-  const sourcePillStyle = (active: boolean): React.CSSProperties => ({
-    padding: '6px 12px', borderRadius: 20,
-    border: active ? 'none' : '1px solid rgba(255,255,255,0.5)',
-    backgroundColor: active ? '#7c3aed' : 'transparent',
-    color: active ? '#fff' : '#fff', fontSize: 12,
-    cursor: 'pointer', transition: 'all 0.3s ease', fontWeight: 500,
+  const pill = (active: boolean): React.CSSProperties => ({
+    padding: '5px 13px',
+    borderRadius: 999,
+    border: `1px solid ${active ? '#fff' : 'rgba(255,255,255,0.2)'}`,
+    background: active ? '#fff' : 'rgba(255,255,255,0.06)',
+    color: active ? '#000' : 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    fontWeight: 500,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+    flexShrink: 0,
   });
 
-  const lockIconStyle: React.CSSProperties = {
-    position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)',
-    color: '#fff', fontSize: 24, cursor: 'pointer', zIndex: 11,
-    display: isLocked ? 'block' : 'none',
-  };
-
-  const modalStyle: React.CSSProperties = {
-    position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)',
-    display: showUploadModal ? 'flex' : 'none',
-    alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(10px)',
-  };
-
-  const modalContentStyle: React.CSSProperties = {
-    backgroundColor: 'rgba(30,30,30,0.9)', border: '1px solid rgba(255,255,255,0.1)',
-    borderRadius: 12, padding: 24, width: '90%', maxWidth: 400, backdropFilter: 'blur(20px)',
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '10px 12px', marginBottom: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-    borderRadius: 8, color: '#fff', fontSize: 14,
-  };
-
-  const brightnessIndicatorStyle: React.CSSProperties = {
-    position: 'absolute', top: '50%', left: '50%',
-    transform: 'translate(-50%, -50%)', textAlign: 'center',
-    display: gestureBrightness !== null ? 'flex' : 'none',
-    flexDirection: 'column', alignItems: 'center', gap: 8, zIndex: 20,
-  };
-
-  const volumeIndicatorStyle: React.CSSProperties = {
-    position: 'absolute', top: '50%', right: 24, transform: 'translateY(-50%)',
-    display: gestureVolume !== null ? 'flex' : 'none',
-    flexDirection: 'column', alignItems: 'center', gap: 8, zIndex: 20,
-  };
-
-  const btnStyle: React.CSSProperties = {
-    padding: '6px 12px', backgroundColor: 'rgba(255,255,255,0.2)',
-    border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, cursor: 'pointer',
-  };
-
-  const selectStyle: React.CSSProperties = {
-    padding: '6px 12px', backgroundColor: 'rgba(255,255,255,0.2)',
-    border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, cursor: 'pointer',
-  };
-
-  const sourceTypes: SourceType[] = ['source1', 'source2', 'source3', 'source4', 'source5', 'archive', 'upload'];
-  const sourceLabels: Record<SourceType, string> = {
-    source1: 'Source 1', source2: 'Source 2', source3: 'Source 3',
-    source4: 'Source 4', source5: 'Source 5', archive: 'Archive', upload: 'Upload',
-  };
+  const fill: React.CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%' };
 
   return (
     <div
       ref={containerRef}
-      style={containerStyle}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onTouchEnd={handleMouseUp}
-      onTouchStart={handleTap}
+      style={{ position: 'fixed', inset: 0, width: '100%', height: '100dvh', backgroundColor: '#000', overflow: 'hidden', zIndex: 9999 }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onMouseMove={resetControlsTimer}
     >
-      <div style={videoContainerStyle}>
-
-        {/* Splash Screen */}
-        <div style={splashStyle} />
-        <div style={splashOverlayStyle}>
-          {lastPlayedTime !== null && (
-            <div style={lastPlayedStyle}>Last played: {formatTime(lastPlayedTime)}</div>
+      {/* SPLASH */}
+      {showSplash && (
+        <div style={{ ...fill, zIndex: 5 }}>
+          {backdropUrl && (
+            <img src={backdropUrl} alt="" style={{ ...fill, objectFit: 'cover', filter: 'brightness(0.22)' }} />
           )}
-          <div
-            style={playButtonStyle}
-            onClick={handlePlay}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.transform = 'scale(1.1)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = 'scale(1)'; }}
-          >
-            <div style={playButtonIconStyle} />
+          <div style={{ ...fill, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            {lastPlayedTime && (
+              <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginBottom: 14, background: 'rgba(0,0,0,0.4)', padding: '6px 14px', borderRadius: 20 }}>
+                Resume from {formatTime(lastPlayedTime)}
+              </div>
+            )}
+            <button onClick={handlePlay} style={{ width: 76, height: 76, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: '2px solid rgba(255,255,255,0.25)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21" /></svg>
+            </button>
+            <div style={{ position: 'absolute', bottom: 50, textAlign: 'center', padding: '0 24px' }}>
+              <div style={{ color: '#fff', fontSize: 20, fontWeight: 700, textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>{movie?.title}</div>
+              {movie?.release_date && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 4 }}>{new Date(movie.release_date).getFullYear()}</div>}
+            </div>
           </div>
-          {showSplash && (
-            <div style={splashTextStyle}>{title}{year && ` (${year})`}</div>
-          )}
         </div>
+      )}
 
-        {/* Native Video (source1) */}
-        <video
-          ref={videoRef}
-          style={videoStyle}
-          controls={false}
-          controlsList="nodownload"
-          crossOrigin="anonymous"
-          muted={isMuted}
-        />
+      {/* NATIVE VIDEO */}
+      {!showSplash && isNativeSource && (
+        <>
+          {activeSource === 'archive' && archiveLoading && (
+            <div style={{ ...fill, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
+              <div style={{ width: 28, height: 28, border: '2px solid rgba(255,255,255,0.15)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Searching archive…</span>
+            </div>
+          )}
+          {activeSource === 'archive' && !archiveLoading && !archiveUrl && (
+            <div style={{ ...fill, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
+              <span style={{ fontSize: 40 }}>🎞</span>
+              <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 14, margin: 0 }}>Not in public archive</p>
+              <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12, margin: 0 }}>Try another source</p>
+            </div>
+          )}
+          {activeSource === 'upload' && uploads.length === 0 && (
+            <div style={{ ...fill, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
+              <span style={{ fontSize: 40 }}>📁</span>
+              <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 14, margin: 0 }}>No uploaded source yet</p>
+            </div>
+          )}
+          {getSourceUrl() && (
+            <video
+              ref={videoRef}
+              key={getSourceUrl()}
+              src={getSourceUrl()}
+              style={{ ...fill, objectFit: objectFit, filter: `brightness(${brightness}%)` }}
+              autoPlay
+              playsInline
+            />
+          )}
+        </>
+      )}
 
-        {/* Iframe (source2-5, archive, upload) */}
+      {/* IFRAME */}
+      {!showSplash && !isNativeSource && (
         <iframe
           ref={iframeRef}
-          style={iframeStyle}
-          src={activeSource !== 'source1' && !showSplash ? getSourceUrl(activeSource) : undefined}
+          key={`${activeSource}-${id}`}
+          src={getSourceUrl()}
+          style={{ ...fill, border: 'none' }}
           allowFullScreen
-          allow="fullscreen; autoplay"
+          allow="autoplay; fullscreen"
         />
+      )}
 
-        {/* Top Bar */}
-        <div style={topBarStyle}>
-          <button
-            onClick={() => navigate(-1)}
-            style={{ backgroundColor: 'transparent', border: 'none', color: '#fff', fontSize: 24, cursor: 'pointer', padding: 8 }}
-          >←</button>
-          <div style={{ fontSize: 16, fontWeight: 600 }}>{title}{year && ` (${year})`}</div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <button style={{ backgroundColor: 'transparent', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', padding: 8 }}>
-              ⚙️
-            </button>
-          </div>
+      {/* TOP BAR */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 56,
+        background: 'linear-gradient(to bottom, rgba(0,0,0,0.85), transparent)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 14px', zIndex: 20,
+        opacity: showControls && !isLocked ? 1 : 0,
+        pointerEvents: showControls && !isLocked ? 'auto' : 'none',
+        transition: 'opacity 0.3s',
+      }}>
+        <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 8, display: 'flex' }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M19 12H5M5 12l7-7M5 12l7 7" /></svg>
+        </button>
+        <span style={{ color: '#fff', fontSize: 14, fontWeight: 600, flex: 1, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 10px' }}>
+          {movie?.title}
+        </span>
+        <button onClick={() => navigate(`/movie/${id}`)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.45)', cursor: 'pointer', fontSize: 12 }}>
+          Details
+        </button>
+      </div>
+
+      {/* CENTER CONTROLS — native video only */}
+      {isNativeSource && !showSplash && showControls && !isLocked && (
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', display: 'flex', alignItems: 'center', gap: 28, zIndex: 15 }}>
+          <button onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }}
+            style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            ↺10
+          </button>
+          <button onClick={() => { if (videoRef.current) { isPlaying ? videoRef.current.pause() : videoRef.current.play(); } }}
+            style={{ width: 68, height: 68, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {isPlaying ? '⏸' : '▶'}
+          </button>
+          <button onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10); }}
+            style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            ↻10
+          </button>
         </div>
+      )}
 
-        {/* Center Controls (native video only) */}
-        <div style={centerControlsStyle}>
-          {!isLocked && (
-            <>
-              <button
-                onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }}
-                style={controlButtonStyle}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.4)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.2)'; }}
-              >↺10</button>
-              <button
-                onClick={() => {
-                  if (videoRef.current) {
-                    if (isPlaying) videoRef.current.pause();
-                    else videoRef.current.play().catch(() => {});
-                  }
-                  setIsPlaying((p) => !p);
-                }}
-                style={{ ...controlButtonStyle, width: 70, height: 70, fontSize: 28 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.4)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.2)'; }}
-              >{isPlaying ? '⏸' : '▶'}</button>
-              <button
-                onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10); }}
-                style={controlButtonStyle}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.4)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(255,255,255,0.2)'; }}
-              >↻10</button>
-            </>
+      {/* LOCK ICON */}
+      {isLocked && (
+        <button onClick={() => setIsLocked(false)}
+          style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '50%', width: 46, height: 46, color: '#fff', fontSize: 18, cursor: 'pointer', zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          🔒
+        </button>
+      )}
+
+      {/* BOTTOM BAR */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        background: 'linear-gradient(to top, rgba(0,0,0,0.95), transparent)',
+        padding: '48px 14px 18px', zIndex: 15,
+        opacity: showControls && !isLocked ? 1 : 0,
+        pointerEvents: showControls && !isLocked ? 'auto' : 'none',
+        transition: 'opacity 0.3s',
+      }}>
+        {/* Seek bar — native only */}
+        {isNativeSource && !showSplash && (
+          <div style={{ marginBottom: 12 }}>
+            <div onClick={handleSeekClick} style={{ width: '100%', height: 3, background: 'rgba(255,255,255,0.2)', borderRadius: 2, cursor: 'pointer', position: 'relative', marginBottom: 6 }}>
+              <div style={{ height: '100%', background: '#7c3aed', borderRadius: 2, width: `${duration ? (currentTime / duration) * 100 : 0}%`, position: 'relative' }}>
+                <div style={{ position: 'absolute', right: -6, top: '50%', transform: 'translateY(-50%)', width: 13, height: 13, borderRadius: '50%', background: '#fff', boxShadow: '0 0 4px rgba(0,0,0,0.5)' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11 }}>{formatTime(currentTime)}</span>
+              <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11 }}>{formatTime(duration)}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 10 }}>
+              {[
+                { label: objectFit === 'contain' ? 'Fit' : 'Fill', action: () => setObjectFit(f => f === 'contain' ? 'cover' : 'contain') },
+                { label: `${playbackRate}x`, action: () => {} },
+                { label: isFullscreen ? '↙ Exit' : '↗ Full', action: handleFullscreen },
+                { label: '🔓 Lock', action: () => setIsLocked(true) },
+              ].map(btn => (
+                <button key={btn.label} onClick={btn.action}
+                  style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>
+                  {btn.label}
+                </button>
+              ))}
+              <select value={playbackRate} onChange={e => {
+                const r = parseFloat(e.target.value);
+                setPlaybackRate(r);
+                if (videoRef.current) videoRef.current.playbackRate = r;
+              }} style={{ padding: '4px 8px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>
+                {[0.5, 0.75, 1, 1.25, 1.5, 2].map(r => <option key={r} value={r} style={{ background: '#111' }}>{r}x</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Source pills */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ color: 'rgba(255,255,255,0.28)', fontSize: 11, flexShrink: 0 }}>Source</span>
+          {sources.map(src => (
+            <button key={src.id} onClick={() => setActiveSource(src.id)} style={pill(activeSource === src.id)}>
+              {src.label}
+            </button>
+          ))}
+          {isAdmin && (
+            <button onClick={() => setShowUploadModal(true)}
+              style={{ marginLeft: 'auto', width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
+              +
+            </button>
           )}
         </div>
+      </div>
 
-        {/* Lock Icon */}
-        <div style={lockIconStyle} onClick={() => setIsLocked(false)}>🔒</div>
-
-        {/* Bottom Controls (native video only) */}
-        <div style={bottomControlsStyle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 12, color: '#fff', minWidth: 36 }}>{formatTime(currentTime)}</span>
-            <div style={seekBarStyle} onClick={handleSeek}>
-              <div style={seekProgressStyle} />
-            </div>
-            <span style={{ fontSize: 12, color: '#fff', minWidth: 36 }}>{formatTime(duration)}</span>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setObjectFit(objectFit === 'contain' ? 'cover' : 'contain')} style={btnStyle}>
-              {objectFit === 'contain' ? 'Fit: Contain' : 'Fit: Cover'}
-            </button>
-            <select value={currentLanguage} onChange={(e) => setCurrentLanguage(e.target.value)} style={selectStyle}>
-              <option value="English">English</option>
-              <option value="Spanish">Spanish</option>
-              <option value="French">French</option>
-              <option value="German">German</option>
-            </select>
-            <select
-              value={playbackRate}
-              onChange={(e) => {
-                const rate = parseFloat(e.target.value);
-                setPlaybackRate(rate);
-                if (videoRef.current) videoRef.current.playbackRate = rate;
-              }}
-              style={selectStyle}
-            >
-              <option value={0.5}>0.5x</option>
-              <option value={0.75}>0.75x</option>
-              <option value={1}>1x</option>
-              <option value={1.25}>1.25x</option>
-              <option value={1.5}>1.5x</option>
-              <option value={2}>2x</option>
-            </select>
-            <button onClick={handleFullscreen} style={btnStyle}>{isFullscreen ? '↙' : '↗'}</button>
-            <button onClick={() => setIsLocked((p) => !p)} style={btnStyle}>{isLocked ? '🔒' : '🔓'}</button>
-          </div>
-
-          {/* Source Pills */}
-          <div style={sourcePillsStyle}>
-            {sourceTypes.map((source) => (
-              <button
-                key={source}
-                onClick={() => { setActiveSource(source); setShowSplash(false); }}
-                style={sourcePillStyle(activeSource === source)}
-              >
-                {sourceLabels[source]}
-              </button>
-            ))}
-            {isAdmin && (
-              <button
-                onClick={() => setShowUploadModal(true)}
-                style={{ ...sourcePillStyle(false), marginLeft: 'auto' }}
-              >+ Upload</button>
-            )}
-          </div>
+      {/* BRIGHTNESS */}
+      {gestureBrightness !== null && (
+        <div style={{ position: 'absolute', left: '22%', top: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center', zIndex: 25, background: 'rgba(0,0,0,0.5)', padding: '12px 16px', borderRadius: 12 }}>
+          <div style={{ fontSize: 26 }}>☀️</div>
+          <div style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>{Math.round(gestureBrightness)}%</div>
         </div>
+      )}
 
-        {/* Brightness Indicator */}
-        <div style={brightnessIndicatorStyle}>
-          <div style={{ fontSize: 24 }}>☀️</div>
-          <div style={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>{Math.round(brightness)}%</div>
+      {/* VOLUME */}
+      {gestureVolume !== null && (
+        <div style={{ position: 'absolute', right: '8%', top: '50%', transform: 'translateY(-50%)', textAlign: 'center', zIndex: 25, background: 'rgba(0,0,0,0.5)', padding: '12px 16px', borderRadius: 12 }}>
+          <div style={{ fontSize: 26 }}>🔊</div>
+          <div style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>{gestureVolume}%</div>
         </div>
+      )}
 
-        {/* Volume Indicator */}
-        <div style={volumeIndicatorStyle}>
-          <div style={{ fontSize: 24 }}>🔊</div>
-          <div style={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>{Math.round(gestureVolume || 0)}%</div>
+      {/* UPLOAD MODAL */}
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: showUploadModal ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }} onClick={() => setShowUploadModal(false)}>
+        <div style={{ width: '100%', maxWidth: 360, background: '#111', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: 24 }} onClick={e => e.stopPropagation()}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>Add video source</span>
+            <button onClick={() => setShowUploadModal(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 20 }}>×</button>
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, marginBottom: 5 }}>Direct .mp4 URL</div>
+          <input style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '10px 14px', color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 10 }}
+            type="url" placeholder="https://example.com/movie.mp4" value={uploadUrl} onChange={e => setUploadUrl(e.target.value)} />
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <select value={uploadQuality} onChange={e => setUploadQuality(e.target.value)}
+              style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '10px 12px', color: '#fff', fontSize: 13, outline: 'none' }}>
+              {['480p','720p','1080p','4K'].map(q => <option key={q} value={q} style={{ background: '#111' }}>{q}</option>)}
+            </select>
+            <input style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '10px 12px', color: '#fff', fontSize: 13, outline: 'none' }}
+              placeholder="English" value={uploadLanguage} onChange={e => setUploadLanguage(e.target.value)} />
+          </div>
+          <button onClick={handleSaveUpload} disabled={!uploadUrl || uploadSaving}
+            style={{ width: '100%', padding: '12px 0', borderRadius: 12, border: 'none', background: !uploadUrl || uploadSaving ? 'rgba(124,58,237,0.4)' : '#7c3aed', color: '#fff', fontWeight: 600, fontSize: 14, cursor: !uploadUrl || uploadSaving ? 'not-allowed' : 'pointer' }}>
+            {uploadSaving ? 'Saving…' : 'Save source'}
+          </button>
         </div>
       </div>
 
-      {/* Upload Modal */}
-      <div style={modalStyle} onClick={() => setShowUploadModal(false)}>
-        <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
-          <h2 style={{ color: '#fff', marginBottom: 20, fontSize: 18, fontWeight: 700 }}>Upload Source</h2>
-          <input type="text" placeholder="Direct MP4 URL" value={uploadUrl} onChange={(e) => setUploadUrl(e.target.value)} style={inputStyle} />
-          <select value={uploadQuality} onChange={(e) => setUploadQuality(e.target.value)} style={inputStyle}>
-            <option value="480p">480p</option>
-            <option value="720p">720p</option>
-            <option value="1080p">1080p</option>
-            <option value="4K">4K</option>
-          </select>
-          <input type="text" placeholder="Language" value={uploadLanguage} onChange={(e) => setUploadLanguage(e.target.value)} style={inputStyle} />
-          <button
-            onClick={() => {
-              setUploadedSources([...uploadedSources, uploadUrl]);
-              setShowUploadModal(false);
-              setUploadUrl('');
-              setUploadQuality('1080p');
-              setUploadLanguage('English');
-            }}
-            style={{ width: '100%', padding: '10px 12px', backgroundColor: '#7c3aed', border: 'none', borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#6d28d9'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#7c3aed'; }}
-          >Save</button>
-        </div>
-      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
-}
+            }
