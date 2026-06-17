@@ -258,7 +258,7 @@ export function PlayerPage() {
   }, [allSources, activeSource]);
 
   const fmt = (t: number): string => {
-    if (!isFinite(t) || isNaN(t)) return '0:00';
+    if (!t || !isFinite(t) || isNaN(t)) return '--:--';
     const m = Math.floor(t / 60);
     const s = Math.floor(t % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
