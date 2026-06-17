@@ -843,7 +843,15 @@ export function PlayerPage() {
               }}
               autoPlay
               playsInline
-            />
+           onPlay={() => setIsPlaying(true)}
+onPause={() => setIsPlaying(false)}
+onTimeUpdate={() => {
+  if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
+}}
+onDurationChange={() => {
+  if (videoRef.current) setDuration(videoRef.current.duration);
+}}
+              />
           )}
         </>
       )}
