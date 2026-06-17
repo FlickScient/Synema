@@ -143,6 +143,7 @@ export function PlayerPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
+  console.log('isAdmin:', isAdmin);
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -187,8 +188,8 @@ export function PlayerPage() {
   // Progress resume
   const [lastPlayedTime, setLastPlayedTime] = useState<number | null>(null);
 
-  // Sources — default source1
-  const [activeSource, setActiveSource] = useState<SourceType>('source1');
+  // Sources — default upload (falls back to "Try The Sources" message if no uploads)
+  const [activeSource, setActiveSource] = useState<SourceType>('upload');
   const [uploads, setUploads] = useState<UploadRow[]>([]);
   const [activeUploadIdx, setActiveUploadIdx] = useState(0);
   const [archiveUrl, setArchiveUrl] = useState<string | null>(null);
@@ -635,9 +636,11 @@ export function PlayerPage() {
   const handleSaveUpload = async () => {
     if (!uploadUrl || !id) return;
     setUploadSaving(true);
+    const tmdbId = parseInt(id);
+    console.log('Saving upload for tmdb_id:', tmdbId, '| title:', movie?.title);
     const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase.from('movie_uploads').insert({
-      tmdb_id: parseInt(id),
+      tmdb_id: tmdbId,
       title: movie?.title || '',
       video_url: uploadUrl,
       quality: uploadQuality,
@@ -802,16 +805,21 @@ export function PlayerPage() {
             </div>
           )}
           {activeSource === 'upload' && uploads.length === 0 && (
-            <div style={{ ...fillAbs, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-              <IcUpload />
-              <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 14, margin: 0, fontWeight: 500 }}>No uploaded source yet</p>
+            <div style={{ ...fillAbs, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+              <IcFilm />
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 16, margin: 0, fontWeight: 700 }}>
+                Try The Sources :/
+              </p>
+              <p style={{ color: 'rgba(255,255,255,0.28)', fontSize: 12, margin: 0 }}>
+                No upload yet — switch a source below
+              </p>
               {isAdmin && (
                 <button
                   onClick={() => setShowUploadModal(true)}
                   style={{
-                    marginTop: 8, padding: '8px 20px',
-                    background: 'rgba(124,58,237,0.2)',
-                    border: '1.5px solid rgba(124,58,237,0.5)',
+                    marginTop: 6, padding: '8px 20px',
+                    background: 'rgba(124,58,237,0.22)',
+                    border: '1.5px solid rgba(124,58,237,0.55)',
                     borderRadius: 999, color: '#fff',
                     fontSize: 13, fontWeight: 600, cursor: 'pointer', outline: 'none',
                   }}
@@ -1314,29 +1322,6 @@ export function PlayerPage() {
           )}
         </div>
       )}
-
-      {/* Source selector strip */}
-      <div style={{ padding: '0 16px 14px' }}>
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none' } as React.CSSProperties}>
-          {allSources.map(src => (
-            <button
-              key={src.id}
-              onClick={() => { setActiveSource(src.id); setShowSourceFail(false); setIframeLoaded(false); }}
-              style={pillStyle(activeSource === src.id)}
-            >
-              {src.label}
-            </button>
-          ))}
-          {isAdmin && (
-            <button
-              onClick={() => setShowUploadModal(true)}
-              style={{ padding: '5px 13px', borderRadius: 999, border: '1.5px dashed rgba(124,58,237,0.55)', background: 'rgba(124,58,237,0.1)', color: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0, outline: 'none' }}
-            >
-              + Upload
-            </button>
-          )}
-        </div>
-      </div>
 
       {/* Similar movies grid */}
       {similarMovies.length > 0 && (
