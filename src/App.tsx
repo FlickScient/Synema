@@ -12,6 +12,10 @@ import { MyListPage } from './pages/MyListPage';
 import { MoviesPage } from './pages/MoviesPage';
 import { SeriesPage } from './pages/SeriesPage';
 import { AuthPage } from './pages/AuthPage';
+import { AdminPage } from './pages/AdminPage';
+
+// Inside <Routes>:
+<Route path="/admin" element={<AdminPage />} />
 
 function ScrollToTop() {
   const { pathname } = useLocation();
