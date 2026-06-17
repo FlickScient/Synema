@@ -524,7 +524,11 @@ export function PlayerPage() {
     const dx = Math.abs(touch.clientX - start.x);
     const dy = Math.abs(touch.clientY - start.y);
 
-    if (dx < 12 && dy < 12) {
+    // If the tap landed on a button/input/link, let the element handle it — don't toggle controls
+    const target = e.target as HTMLElement;
+    const tappedInteractive = !!target.closest('button, input, select, a, [role="button"]');
+
+    if (dx < 12 && dy < 12 && !tappedInteractive) {
       const lastTap = lastTapRef.current;
       const W = containerRef.current?.clientWidth || window.innerWidth;
       if (lastTap && (now - lastTap.time) < 300 && Math.abs(touch.clientX - lastTap.x) < 80) {
@@ -652,16 +656,19 @@ export function PlayerPage() {
           position: 'fixed',
           inset: 0,
           height: '100dvh',
-          backgroundColor: '#000',
+          background: '#000',
           overflow: 'hidden',
           zIndex: 9999,
           fontFamily: 'system-ui, -apple-system, sans-serif',
-          transform: `translateY(${containerY}px)`,
-          transition: isClosingDown
-            ? 'transform 0.3s cubic-bezier(0.4,0,1,1)'
-            : containerY === 0
-            ? 'transform 0.22s ease'
-            : 'none',
+          ...(containerY > 0 ? {
+            transform: `translateY(${containerY}px)`,
+            transition: isClosingDown
+              ? 'transform 0.3s cubic-bezier(0.4,0,1,1)'
+              : 'none',
+          } : isClosingDown ? {
+            transform: `translateY(${containerY}px)`,
+            transition: 'transform 0.3s cubic-bezier(0.4,0,1,1)',
+          } : {}),
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -681,9 +688,12 @@ export function PlayerPage() {
 
         {/* ── SPLASH ─────────────────────────────────────────────────────────── */}
         {showSplash && (
-          <div style={{ ...fill, zIndex: 5 }}>
-            {backdropUrl && (
+          <div style={{ ...fill, zIndex: 5, background: '#000' }}>
+            {backdropUrl ? (
               <img src={backdropUrl} alt="" style={{ ...fill, objectFit: 'cover', filter: 'brightness(0.22)' }} />
+            ) : (
+              /* Fallback gradient while movie data loads */
+              <div style={{ ...fill, background: 'linear-gradient(135deg, #0d0818 0%, #08090d 60%, #120820 100%)' }} />
             )}
             <div style={{ ...fill, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.65) 100%)' }} />
 
@@ -824,14 +834,37 @@ export function PlayerPage() {
 
         {/* ── IFRAME ─────────────────────────────────────────────────────────── */}
         {!showSplash && !isNativeSource && (
-          <iframe
-            ref={iframeRef}
-            key={`${activeSource}-${id}`}
-            src={srcUrl}
-            style={{ ...fill, border: 'none' }}
-            allowFullScreen
-            allow="autoplay; fullscreen; picture-in-picture"
-          />
+          <div style={{ ...fill }}>
+            {/* Loading backdrop shown while iframe loads */}
+            <div style={{
+              ...fill,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 14,
+              background: '#000',
+              zIndex: 0,
+            }}>
+              <div style={{
+                width: 32,
+                height: 32,
+                border: '2.5px solid rgba(255,255,255,0.1)',
+                borderTopColor: '#7c3aed',
+                borderRadius: '50%',
+                animation: '_spin 0.75s linear infinite',
+              }} />
+              <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>Loading player…</span>
+            </div>
+            <iframe
+              ref={iframeRef}
+              key={`${activeSource}-${id}`}
+              src={srcUrl}
+              style={{ ...fill, border: 'none', position: 'absolute', zIndex: 1 }}
+              allowFullScreen
+              allow="autoplay; fullscreen; picture-in-picture"
+            />
+          </div>
         )}
 
         {/* ── HUD PILL ───────────────────────────────────────────────────────── */}
