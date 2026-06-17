@@ -228,24 +228,22 @@ export function PlayerPage() {
   const getSourceUrl = useCallback((): string => {
     if (!id) return '';
     switch (activeSource) {
-      case 'source1': return `https://embed.su/embed/movie/${id}`;
-      case 'source2': return `https://vidsrc.me/embed/movie?tmdb=${id}`;
-      case 'source3': return `https://vidsrc.to/embed/movie/${id}`;
-      case 'source4': return `https://player.smashy.stream/movie/${id}`;
-      case 'source5': return `https://multiembed.mov/?video_id=${id}&tmdb=1`;
-      case 'archive': return archiveUrl || '';
-      case 'upload': return uploads[activeUploadIdx]?.video_url || '';
+      case 'source1': return `https://vidsrc.mov/embed/movie/${id}`;
+case 'source2': return `https://vidlink.pro/movie/${id}`;
+case 'source3': return `https://player.videasy.net/movie/${id}`;
+case 'source4': return `https://www.2embed.cc/embed/${id}`;
+case 'source5': return `https://embed.smashystream.com/playere.php?tmdb=${id}`;
       default: return '';
     }
   }, [id, activeSource, archiveUrl, uploads, activeUploadIdx]);
 
   const allSources: { id: SourceType; label: string }[] = [
     { id: 'upload' as SourceType, label: uploads.length > 0 ? `Upload (${uploads.length})` : 'Upload' },
-    { id: 'source1', label: 'Source 1' },
-    { id: 'source2', label: 'Source 2' },
-    { id: 'source3', label: 'Source 3' },
-    { id: 'source4', label: 'Source 4' },
-    { id: 'source5', label: 'Source 5' },
+   { id: 'source1', label: 'VidSrc' },
+{ id: 'source2', label: 'VidLink' },
+{ id: 'source3', label: 'Videasy' },
+{ id: 'source4', label: '2Embed' },
+{ id: 'source5', label: 'Smashy' },
     { id: 'archive', label: 'Archive' },
   ];
 
