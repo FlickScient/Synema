@@ -42,13 +42,13 @@ const IcForward = () => (
   </svg>
 );
 const IcLock = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
     <rect x="3" y="11" width="18" height="11" rx="2" />
     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
   </svg>
 );
 const IcUnlock = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
     <rect x="3" y="11" width="18" height="11" rx="2" />
     <path d="M7 11V7a5 5 0 0 1 9.9-1" />
   </svg>
@@ -78,7 +78,7 @@ const IcExitFs = () => (
   </svg>
 );
 const IcVolSvg = ({ muted, vol }: { muted: boolean; vol: number }) => (
-  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="white" stroke="none" />
     {muted || vol === 0
       ? <><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" /></>
@@ -89,8 +89,8 @@ const IcVolSvg = ({ muted, vol }: { muted: boolean; vol: number }) => (
   </svg>
 );
 const IcSunSvg = () => (
-  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
-    <circle cx="12" cy="12" r="5" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
+    <circle cx="12" cy="12" r="5" fill="white" stroke="none" />
     <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
     <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
     <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
@@ -122,10 +122,14 @@ export function PlayerPage() {
   const seekBarRef = useRef<HTMLDivElement>(null);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const hudTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const hudClearTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const sourceFailTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const longPressActiveRef = useRef(false);
+  // touchStartRef = updated each move frame (for delta calculation)
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  // touchInitialRef = fixed at gesture start (for left/right side detection) — never updated mid-gesture
+  const touchInitialRef = useRef<{ x: number; y: number } | null>(null);
   const lastTapRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const gestureTypeRef = useRef<'none' | 'h' | 'v' | 'swipedown'>('none');
   const seekDraggingRef = useRef(false);
@@ -151,7 +155,7 @@ export function PlayerPage() {
   // Progress
   const [lastPlayedTime, setLastPlayedTime] = useState<number | null>(null);
 
-  // Sources
+  // Sources — default is always source1, never upload
   const [activeSource, setActiveSource] = useState<SourceType>('source1');
   const [uploads, setUploads] = useState<UploadRow[]>([]);
   const [activeUploadIdx, setActiveUploadIdx] = useState(0);
@@ -172,6 +176,8 @@ export function PlayerPage() {
 
   // Source failure
   const [showSourceFail, setShowSourceFail] = useState(false);
+  // Iframe loaded state for source-fail detection
+  const [iframeLoaded, setIframeLoaded] = useState(false);
 
   // Upload modal
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -215,6 +221,7 @@ export function PlayerPage() {
     const idx = ids.indexOf(activeSource);
     setActiveSource(ids[(idx + 1) % ids.length]);
     setShowSourceFail(false);
+    setIframeLoaded(false);
   }, [allSources, activeSource]);
 
   const fmt = (t: number): string => {
@@ -239,7 +246,11 @@ export function PlayerPage() {
     setHudValue(Math.round(Math.max(0, Math.min(100, val))));
     setHudVisible(true);
     if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
+    if (hudClearTimerRef.current) clearTimeout(hudClearTimerRef.current);
+    // Hide after 1.5s
     hudTimerRef.current = setTimeout(() => setHudVisible(false), 1500);
+    // Remove from DOM after fade completes (1.5s + 0.4s transition)
+    hudClearTimerRef.current = setTimeout(() => setHudType(null), 2000);
   }, []);
 
   // ── Effects ─────────────────────────────────────────────────────────────────
@@ -324,6 +335,7 @@ export function PlayerPage() {
     };
   }, [activeSource]);
 
+  // Source fail timer — 10s for native video sources
   useEffect(() => {
     if (showSplash || !isNativeSource) return;
     setShowSourceFail(false);
@@ -331,7 +343,22 @@ export function PlayerPage() {
     sourceFailTimerRef.current = setTimeout(() => {
       const video = videoRef.current;
       if (!video || video.readyState < 3) setShowSourceFail(true);
-    }, 8000);
+    }, 10000);
+    return () => { if (sourceFailTimerRef.current) clearTimeout(sourceFailTimerRef.current); };
+  }, [activeSource, showSplash, isNativeSource]);
+
+  // Source fail timer — 10s for iframe sources (reset by iframe onLoad)
+  useEffect(() => {
+    if (showSplash || isNativeSource) return;
+    setShowSourceFail(false);
+    setIframeLoaded(false);
+    if (sourceFailTimerRef.current) clearTimeout(sourceFailTimerRef.current);
+    sourceFailTimerRef.current = setTimeout(() => {
+      setIframeLoaded(prev => {
+        if (!prev) setShowSourceFail(true);
+        return prev;
+      });
+    }, 10000);
     return () => { if (sourceFailTimerRef.current) clearTimeout(sourceFailTimerRef.current); };
   }, [activeSource, showSplash, isNativeSource]);
 
@@ -439,6 +466,8 @@ export function PlayerPage() {
     const now = Date.now();
     const isTopBar = touch.clientY < 68;
     touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: now };
+    // Store the INITIAL position — never overwritten mid-gesture (used for left/right side detection)
+    touchInitialRef.current = { x: touch.clientX, y: touch.clientY };
     gestureTypeRef.current = isTopBar ? 'swipedown' : 'none';
   };
 
@@ -473,13 +502,17 @@ export function PlayerPage() {
     }
 
     if (gestureTypeRef.current === 'v' && isNativeSource) {
-      const isRightSide = start.x > W / 2;
+      // Use touchInitialRef (fixed gesture start) for side detection — prevents drift mid-gesture
+      const initialX = touchInitialRef.current?.x ?? start.x;
+      const isRightSide = initialX > W / 2;
       if (isRightSide && videoRef.current) {
+        // Right side: volume
         const newVol = Math.max(0, Math.min(1, videoRef.current.volume - dy * 0.006));
         videoRef.current.volume = newVol;
         setVolume(newVol);
         triggerHUD('volume', newVol * 100);
       } else {
+        // Left side: brightness
         const newBr = Math.max(10, Math.min(180, brightnessRef.current - dy * 0.6));
         brightnessRef.current = newBr;
         setBrightness(newBr);
@@ -502,6 +535,7 @@ export function PlayerPage() {
         setContainerY(0);
       }
       touchStartRef.current = null;
+      touchInitialRef.current = null;
       gestureTypeRef.current = 'none';
       return;
     }
@@ -509,12 +543,14 @@ export function PlayerPage() {
     if (gestureTypeRef.current === 'h') {
       setTimeout(() => setSeekGesturePreview(null), 900);
       touchStartRef.current = null;
+      touchInitialRef.current = null;
       gestureTypeRef.current = 'none';
       return;
     }
 
     if (gestureTypeRef.current === 'v') {
       touchStartRef.current = null;
+      touchInitialRef.current = null;
       gestureTypeRef.current = 'none';
       return;
     }
@@ -524,38 +560,44 @@ export function PlayerPage() {
     const dx = Math.abs(touch.clientX - start.x);
     const dy = Math.abs(touch.clientY - start.y);
 
-    // If the tap landed on a button/input/link, let the element handle it — don't toggle controls
+    // If tapped an interactive element, don't toggle controls — just reset the timer to keep them visible
     const target = e.target as HTMLElement;
     const tappedInteractive = !!target.closest('button, input, select, a, [role="button"]');
 
-    if (dx < 12 && dy < 12 && !tappedInteractive) {
-      const lastTap = lastTapRef.current;
-      const W = containerRef.current?.clientWidth || window.innerWidth;
-      if (lastTap && (now - lastTap.time) < 300 && Math.abs(touch.clientX - lastTap.x) < 80) {
-        lastTapRef.current = null;
-        if (isNativeSource && videoRef.current) {
-          if (touch.clientX < W / 2) {
-            videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
-            setRippleLeft(c => c + 1);
-          } else {
-            videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10);
-            setRippleRight(c => c + 1);
-          }
-        }
+    if (dx < 12 && dy < 12) {
+      if (tappedInteractive) {
+        // Button tap: keep controls visible / reset timer
+        if (!isLocked) resetControlsTimer();
       } else {
-        lastTapRef.current = { x: touch.clientX, y: touch.clientY, time: now };
-        if (!isLocked) {
-          if (showControls) {
-            setShowControls(false);
-            if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
-          } else {
-            resetControlsTimer();
+        const lastTap = lastTapRef.current;
+        const W = containerRef.current?.clientWidth || window.innerWidth;
+        if (lastTap && (now - lastTap.time) < 300 && Math.abs(touch.clientX - lastTap.x) < 80) {
+          lastTapRef.current = null;
+          if (isNativeSource && videoRef.current) {
+            if (touch.clientX < W / 2) {
+              videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
+              setRippleLeft(c => c + 1);
+            } else {
+              videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10);
+              setRippleRight(c => c + 1);
+            }
+          }
+        } else {
+          lastTapRef.current = { x: touch.clientX, y: touch.clientY, time: now };
+          if (!isLocked) {
+            if (showControls) {
+              setShowControls(false);
+              if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+            } else {
+              resetControlsTimer();
+            }
           }
         }
       }
     }
 
     touchStartRef.current = null;
+    touchInitialRef.current = null;
     gestureTypeRef.current = 'none';
   };
 
@@ -615,6 +657,7 @@ export function PlayerPage() {
     flexShrink: 0,
   });
 
+  // ctrlVisible controls all overlays except back button (which is always accessible)
   const ctrlVisible = showControls && !isLocked;
   const srcUrl = getSourceUrl();
   const backdropUrl = movie?.backdrop_path
@@ -635,8 +678,8 @@ export function PlayerPage() {
             100% { transform: scale(3.8); opacity: 0; }
           }
           @keyframes _hudIn {
-            from { transform: translateX(-50%) translateY(-16px); opacity: 0; }
-            to { transform: translateX(-50%) translateY(0); opacity: 1; }
+            from { transform: translateX(-50%) translateY(-14px); opacity: 0; }
+            to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
           }
           @keyframes _seekIn {
             from { opacity: 0; transform: translate(-50%, -50%) scale(0.82); }
@@ -645,6 +688,10 @@ export function PlayerPage() {
           @keyframes _fadeIn {
             from { opacity: 0; }
             to { opacity: 1; }
+          }
+          @keyframes _lockIn {
+            from { opacity: 0; transform: translate(-50%, -50%) scale(0.75); }
+            to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
           }
         `
       }} />
@@ -656,15 +703,14 @@ export function PlayerPage() {
           position: 'fixed',
           inset: 0,
           height: '100dvh',
+          backgroundColor: '#000',
           background: '#000',
           overflow: 'hidden',
           zIndex: 9999,
           fontFamily: 'system-ui, -apple-system, sans-serif',
           ...(containerY > 0 ? {
             transform: `translateY(${containerY}px)`,
-            transition: isClosingDown
-              ? 'transform 0.3s cubic-bezier(0.4,0,1,1)'
-              : 'none',
+            transition: isClosingDown ? 'transform 0.3s cubic-bezier(0.4,0,1,1)' : 'none',
           } : isClosingDown ? {
             transform: `translateY(${containerY}px)`,
             transition: 'transform 0.3s cubic-bezier(0.4,0,1,1)',
@@ -682,51 +728,62 @@ export function PlayerPage() {
             ...fill,
             pointerEvents: 'none',
             zIndex: 4,
-            backgroundColor: brightness < 100 ? `rgba(0,0,0,${((100 - brightness) / 100) * 0.9})` : 'transparent',
+            backgroundColor: brightness < 100
+              ? `rgba(0,0,0,${((100 - brightness) / 100) * 0.9})`
+              : 'transparent',
           }} />
         )}
 
         {/* ── SPLASH ─────────────────────────────────────────────────────────── */}
         {showSplash && (
-          <div style={{ ...fill, zIndex: 5, background: '#000' }}>
+          <div style={{ ...fill, zIndex: 5, backgroundColor: '#000' }}>
+            {/* Backdrop image — visible at 35% brightness so you can see the movie art */}
             {backdropUrl ? (
-              <img src={backdropUrl} alt="" style={{ ...fill, objectFit: 'cover', filter: 'brightness(0.22)' }} />
+              <img
+                src={backdropUrl}
+                alt=""
+                style={{ ...fill, objectFit: 'cover', filter: 'brightness(0.35)' }}
+              />
             ) : (
-              /* Fallback gradient while movie data loads */
-              <div style={{ ...fill, background: 'linear-gradient(135deg, #0d0818 0%, #08090d 60%, #120820 100%)' }} />
+              /* Visible purple-tinted gradient while backdrop loads */
+              <div style={{ ...fill, background: 'linear-gradient(135deg, #1a0a2e 0%, #0d0818 50%, #1a0520 100%)' }} />
             )}
-            <div style={{ ...fill, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.65) 100%)' }} />
+            {/* Vignette overlay */}
+            <div style={{ ...fill, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.6) 100%)' }} />
+            {/* Bottom fade */}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40%', background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%)' }} />
 
-            {/* Back on splash */}
+            {/* Back on splash — always accessible */}
             <button
               onClick={() => navigate(-1)}
               style={{
                 position: 'absolute', top: 18, left: 16,
-                background: 'rgba(0,0,0,0.45)',
+                background: 'rgba(0,0,0,0.5)',
                 backdropFilter: 'blur(8px)',
                 WebkitBackdropFilter: 'blur(8px)',
-                border: 'none', borderRadius: '50%',
-                width: 40, height: 40,
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: '50%',
+                width: 42, height: 42,
                 color: '#fff', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
+                zIndex: 10,
               }}
             >
               <IcBack />
             </button>
 
-            {/* Center */}
+            {/* Center play button */}
             <div style={{ ...fill, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               {lastPlayedTime !== null && lastPlayedTime > 5 && (
                 <div style={{
-                  background: 'rgba(0,0,0,0.55)',
+                  background: 'rgba(0,0,0,0.6)',
                   backdropFilter: 'blur(12px)',
                   WebkitBackdropFilter: 'blur(12px)',
                   border: '1px solid rgba(255,255,255,0.14)',
                   borderRadius: 999,
                   padding: '7px 18px',
-                  color: 'rgba(255,255,255,0.75)',
-                  fontSize: 13,
-                  fontWeight: 500,
+                  color: 'rgba(255,255,255,0.8)',
+                  fontSize: 13, fontWeight: 500,
                   marginBottom: 22,
                   animation: '_fadeIn 0.4s ease',
                 }}>
@@ -736,18 +793,16 @@ export function PlayerPage() {
               <button
                 onClick={handlePlay}
                 style={{
-                  width: 80,
-                  height: 80,
+                  width: 84, height: 84,
                   borderRadius: '50%',
-                  background: 'rgba(124,58,237,0.22)',
-                  border: '2.5px solid rgba(124,58,237,0.75)',
+                  background: 'rgba(124,58,237,0.28)',
+                  border: '2.5px solid rgba(124,58,237,0.8)',
                   backdropFilter: 'blur(18px)',
                   WebkitBackdropFilter: 'blur(18px)',
-                  boxShadow: '0 0 48px rgba(124,58,237,0.45), 0 0 20px rgba(124,58,237,0.2)',
+                  boxShadow: '0 0 56px rgba(124,58,237,0.5), 0 0 22px rgba(124,58,237,0.25)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer',
-                  outline: 'none',
-                  animation: '_fadeIn 0.5s ease',
+                  cursor: 'pointer', outline: 'none',
+                  animation: '_fadeIn 0.45s ease',
                 }}
               >
                 <IcPlay />
@@ -756,20 +811,20 @@ export function PlayerPage() {
 
             {/* Title + year */}
             <div style={{
-              position: 'absolute', bottom: 64, left: 0, right: 0,
+              position: 'absolute', bottom: 52, left: 0, right: 0,
               textAlign: 'center', padding: '0 36px',
               animation: '_fadeIn 0.5s ease',
             }}>
               <div style={{
-                color: '#fff', fontSize: 21, fontWeight: 700,
-                textShadow: '0 2px 14px rgba(0,0,0,0.8)',
+                color: '#fff', fontSize: 22, fontWeight: 700,
+                textShadow: '0 2px 16px rgba(0,0,0,0.9)',
                 letterSpacing: '-0.3px',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
-                {movie?.title}
+                {movie?.title ?? ''}
               </div>
               {movie?.release_date && (
-                <div style={{ color: 'rgba(255,255,255,0.36)', fontSize: 14, marginTop: 6 }}>
+                <div style={{ color: 'rgba(255,255,255,0.42)', fontSize: 14, marginTop: 6 }}>
                   {new Date(movie.release_date).getFullYear()}
                 </div>
               )}
@@ -835,79 +890,77 @@ export function PlayerPage() {
         {/* ── IFRAME ─────────────────────────────────────────────────────────── */}
         {!showSplash && !isNativeSource && (
           <div style={{ ...fill }}>
-            {/* Loading backdrop shown while iframe loads */}
-            <div style={{
-              ...fill,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 14,
-              background: '#000',
-              zIndex: 0,
-            }}>
+            {/* Spinner shown while iframe loads */}
+            {!iframeLoaded && (
               <div style={{
-                width: 32,
-                height: 32,
-                border: '2.5px solid rgba(255,255,255,0.1)',
-                borderTopColor: '#7c3aed',
-                borderRadius: '50%',
-                animation: '_spin 0.75s linear infinite',
-              }} />
-              <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>Loading player…</span>
-            </div>
+                ...fill,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14,
+                background: '#000', zIndex: 0,
+              }}>
+                <div style={{
+                  width: 32, height: 32,
+                  border: '2.5px solid rgba(255,255,255,0.1)',
+                  borderTopColor: '#7c3aed',
+                  borderRadius: '50%',
+                  animation: '_spin 0.75s linear infinite',
+                }} />
+                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>Loading player…</span>
+              </div>
+            )}
             <iframe
               ref={iframeRef}
               key={`${activeSource}-${id}`}
               src={srcUrl}
-              style={{ ...fill, border: 'none', position: 'absolute', zIndex: 1 }}
+              onLoad={() => {
+                setIframeLoaded(true);
+                setShowSourceFail(false);
+                if (sourceFailTimerRef.current) clearTimeout(sourceFailTimerRef.current);
+              }}
+              style={{ ...fill, border: 'none', position: 'absolute', zIndex: 1, opacity: iframeLoaded ? 1 : 0, transition: 'opacity 0.3s ease' }}
               allowFullScreen
               allow="autoplay; fullscreen; picture-in-picture"
             />
           </div>
         )}
 
-        {/* ── HUD PILL ───────────────────────────────────────────────────────── */}
+        {/* ── HUD PILL (volume / brightness) ─────────────────────────────────── */}
         {hudType !== null && (
           <div
-            key={hudType}
+            key={`${hudType}-${hudValue}`}
             style={{
               position: 'absolute',
-              top: 72,
+              top: 68,
               left: '50%',
-              animation: '_hudIn 0.2s ease forwards',
+              // Static transform keeps it centered after the animation completes
+              transform: 'translateX(-50%)',
+              animation: '_hudIn 0.18s ease forwards',
               opacity: hudVisible ? 1 : 0,
-              transition: 'opacity 0.45s ease',
+              transition: 'opacity 0.4s ease',
               pointerEvents: 'none',
               zIndex: 35,
               display: 'flex',
               alignItems: 'center',
-              gap: 9,
-              background: 'rgba(8,6,16,0.78)',
+              gap: 10,
+              background: 'rgba(8,6,16,0.82)',
               backdropFilter: 'blur(22px)',
               WebkitBackdropFilter: 'blur(22px)',
-              border: '1px solid rgba(255,255,255,0.1)',
+              border: '1px solid rgba(255,255,255,0.12)',
               borderRadius: 999,
-              padding: '8px 16px 8px 12px',
-              minWidth: 148,
+              padding: '9px 16px 9px 12px',
+              minWidth: 156,
             }}
           >
-            {hudType === 'volume'
-              ? <IcVolSvg muted={isMuted} vol={volume} />
-              : <IcSunSvg />
-            }
+            {/* Sun = brightness (left side), Speaker = volume (right side) */}
+            {hudType === 'brightness' ? <IcSunSvg /> : <IcVolSvg muted={isMuted} vol={volume} />}
             <div style={{
               flex: 1, height: 3,
-              background: 'rgba(255,255,255,0.13)',
-              borderRadius: 99, overflow: 'hidden',
-              minWidth: 78,
+              background: 'rgba(255,255,255,0.15)',
+              borderRadius: 99, overflow: 'hidden', minWidth: 80,
             }}>
               <div style={{
-                height: '100%',
-                width: `${hudValue}%`,
-                background: '#7c3aed',
-                borderRadius: 99,
-                transition: 'width 0.08s linear',
+                height: '100%', width: `${hudValue}%`,
+                background: '#7c3aed', borderRadius: 99,
+                transition: 'width 0.07s linear',
               }} />
             </div>
             <span style={{
@@ -922,61 +975,36 @@ export function PlayerPage() {
 
         {/* ── DOUBLE TAP RIPPLES ─────────────────────────────────────────────── */}
         {rippleLeft > 0 && (
-          <div
-            key={`rl-${rippleLeft}`}
-            style={{
-              position: 'absolute',
-              left: '25%',
-              top: '50%',
-              width: 88,
-              height: 88,
-              marginLeft: -44,
-              marginTop: -44,
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.2)',
-              animation: '_ripple 0.6s ease-out forwards',
-              pointerEvents: 'none',
-              zIndex: 12,
-            }}
-          />
+          <div key={`rl-${rippleLeft}`} style={{
+            position: 'absolute', left: '25%', top: '50%',
+            width: 88, height: 88, marginLeft: -44, marginTop: -44,
+            borderRadius: '50%', background: 'rgba(255,255,255,0.2)',
+            animation: '_ripple 0.6s ease-out forwards',
+            pointerEvents: 'none', zIndex: 12,
+          }} />
         )}
         {rippleRight > 0 && (
-          <div
-            key={`rr-${rippleRight}`}
-            style={{
-              position: 'absolute',
-              left: '75%',
-              top: '50%',
-              width: 88,
-              height: 88,
-              marginLeft: -44,
-              marginTop: -44,
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.2)',
-              animation: '_ripple 0.6s ease-out forwards',
-              pointerEvents: 'none',
-              zIndex: 12,
-            }}
-          />
+          <div key={`rr-${rippleRight}`} style={{
+            position: 'absolute', left: '75%', top: '50%',
+            width: 88, height: 88, marginLeft: -44, marginTop: -44,
+            borderRadius: '50%', background: 'rgba(255,255,255,0.2)',
+            animation: '_ripple 0.6s ease-out forwards',
+            pointerEvents: 'none', zIndex: 12,
+          }} />
         )}
 
         {/* ── SEEK GESTURE PREVIEW ───────────────────────────────────────────── */}
         {seekGesturePreview !== null && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '50%', left: '50%',
-              animation: '_seekIn 0.15s ease forwards',
-              pointerEvents: 'none',
-              zIndex: 26,
-              background: 'rgba(0,0,0,0.68)',
-              backdropFilter: 'blur(14px)',
-              WebkitBackdropFilter: 'blur(14px)',
-              borderRadius: 14,
-              padding: '10px 22px',
-              transform: 'translate(-50%, -50%)',
-            }}
-          >
+          <div style={{
+            position: 'absolute', top: '50%', left: '50%',
+            animation: '_seekIn 0.15s ease forwards',
+            pointerEvents: 'none', zIndex: 26,
+            background: 'rgba(0,0,0,0.68)',
+            backdropFilter: 'blur(14px)',
+            WebkitBackdropFilter: 'blur(14px)',
+            borderRadius: 14, padding: '10px 22px',
+            transform: 'translate(-50%, -50%)',
+          }}>
             <span style={{ color: '#fff', fontSize: 24, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
               {fmt(seekGesturePreview)}
             </span>
@@ -985,30 +1013,23 @@ export function PlayerPage() {
 
         {/* ── SOURCE FAIL OVERLAY ────────────────────────────────────────────── */}
         {showSourceFail && !showSplash && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '50%', left: '50%',
-              transform: 'translate(-50%, -50%)',
-              background: 'rgba(0,0,0,0.82)',
-              backdropFilter: 'blur(18px)',
-              WebkitBackdropFilter: 'blur(18px)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 18,
-              padding: '22px 28px',
-              textAlign: 'center',
-              zIndex: 45,
-              animation: '_fadeIn 0.22s ease',
-              minWidth: 220,
-            }}
-          >
+          <div style={{
+            position: 'absolute', top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: 'rgba(0,0,0,0.85)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 18, padding: '22px 28px',
+            textAlign: 'center', zIndex: 45,
+            animation: '_fadeIn 0.22s ease', minWidth: 220,
+          }}>
             <p style={{ color: '#fff', fontSize: 15, fontWeight: 700, margin: '0 0 6px' }}>Source failed</p>
             <p style={{ color: 'rgba(255,255,255,0.42)', fontSize: 13, margin: '0 0 18px' }}>Try the next source?</p>
             <button
               onClick={nextSource}
               style={{
-                padding: '10px 26px',
-                background: '#7c3aed',
+                padding: '10px 26px', background: '#7c3aed',
                 border: 'none', borderRadius: 999,
                 color: '#fff', fontSize: 14, fontWeight: 700,
                 cursor: 'pointer', outline: 'none',
@@ -1019,32 +1040,50 @@ export function PlayerPage() {
           </div>
         )}
 
-        {/* ── TOP BAR ────────────────────────────────────────────────────────── */}
+        {/* ── BACK BUTTON — always visible & always tappable ─────────────────── */}
         {!showSplash && (
-          <div
+          <button
+            onClick={() => navigate(-1)}
             style={{
-              position: 'absolute', top: 0, left: 0, right: 0,
-              height: 64,
-              background: 'linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, transparent 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '0 10px',
-              zIndex: 20,
-              opacity: ctrlVisible ? 1 : 0,
-              pointerEvents: ctrlVisible ? 'auto' : 'none',
+              position: 'absolute', top: 14, left: 12,
+              background: 'rgba(0,0,0,0.45)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: '50%',
+              width: 42, height: 42,
+              color: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 22,
+              // Always tappable, but subtle when controls are hidden
+              opacity: ctrlVisible ? 1 : 0.45,
+              pointerEvents: 'auto',
               transition: 'opacity 0.28s ease',
+              outline: 'none',
             }}
           >
-            <button
-              onClick={() => navigate(-1)}
-              style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 8, display: 'flex', borderRadius: 10, outline: 'none' }}
-            >
-              <IcBack />
-            </button>
+            <IcBack />
+          </button>
+        )}
+
+        {/* ── TOP BAR (title + right icons) ──────────────────────────────────── */}
+        {!showSplash && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0,
+            height: 64,
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.88) 0%, transparent 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '0 10px 0 60px',
+            zIndex: 20,
+            opacity: ctrlVisible ? 1 : 0,
+            pointerEvents: ctrlVisible ? 'auto' : 'none',
+            transition: 'opacity 0.28s ease',
+          }}>
             <span style={{
               color: '#fff', fontSize: 15, fontWeight: 600,
               flex: 1, textAlign: 'center',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              padding: '0 10px',
+              padding: '0 8px',
             }}>
               {movie?.title}
             </span>
@@ -1068,92 +1107,96 @@ export function PlayerPage() {
         )}
 
         {/* ── CENTER CONTROLS (native video only) ───────────────────────────── */}
-        {!showSplash && isNativeSource && (
+        {!showSplash && isNativeSource && ctrlVisible && (
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 16, pointerEvents: 'none',
           }}>
-            {/* Tap to Lock — left side */}
-            {ctrlVisible && (
-              <button
-                onClick={() => setIsLocked(true)}
-                style={{
-                  position: 'absolute', left: 16, top: '50%',
-                  transform: 'translateY(-50%)',
-                  display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', gap: 5,
-                  background: 'rgba(0,0,0,0.38)',
-                  backdropFilter: 'blur(10px)',
-                  WebkitBackdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  borderRadius: 14, padding: '10px 11px',
-                  color: 'rgba(255,255,255,0.7)',
-                  cursor: 'pointer', pointerEvents: 'auto', outline: 'none',
-                }}
-              >
-                <IcLock />
-                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.5px', color: 'rgba(255,255,255,0.55)' }}>LOCK</span>
-              </button>
-            )}
+            {/* Lock button — left side */}
+            <button
+              onClick={() => setIsLocked(true)}
+              style={{
+                position: 'absolute', left: 16, top: '50%',
+                transform: 'translateY(-50%)',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', gap: 5,
+                background: 'rgba(0,0,0,0.42)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: 14, padding: '10px 11px',
+                color: 'rgba(255,255,255,0.75)',
+                cursor: 'pointer', pointerEvents: 'auto', outline: 'none',
+              }}
+            >
+              <IcLock />
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.5px', color: 'rgba(255,255,255,0.5)' }}>LOCK</span>
+            </button>
 
             {/* ↺10 / Play-Pause / ↻10 */}
-            {ctrlVisible && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 24, pointerEvents: 'auto' }}>
-                <button
-                  onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }}
-                  style={glassBtn(52)}
-                >
-                  <IcRewind />
-                </button>
-                <button
-                  onPointerDown={handlePlayPointerDown}
-                  onPointerUp={handlePlayPointerUp}
-                  onPointerLeave={handlePlayPointerLeave}
-                  style={glassBtn(70)}
-                >
-                  {isPlaying ? <IcPause /> : <IcPlay />}
-                </button>
-                <button
-                  onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10); }}
-                  style={glassBtn(52)}
-                >
-                  <IcForward />
-                </button>
-              </div>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 24, pointerEvents: 'auto' }}>
+              <button
+                onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }}
+                style={glassBtn(52)}
+              >
+                <IcRewind />
+              </button>
+              <button
+                onPointerDown={handlePlayPointerDown}
+                onPointerUp={handlePlayPointerUp}
+                onPointerLeave={handlePlayPointerLeave}
+                style={glassBtn(70)}
+              >
+                {isPlaying ? <IcPause /> : <IcPlay />}
+              </button>
+              <button
+                onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10); }}
+                style={glassBtn(52)}
+              >
+                <IcForward />
+              </button>
+            </div>
           </div>
         )}
 
-        {/* ── LOCK BUTTON (when locked) ──────────────────────────────────────── */}
+        {/* ── LOCKED OVERLAY — centered lock icon, tap anywhere or tap icon to unlock ── */}
         {!showSplash && isLocked && (
           <button
             onClick={() => { setIsLocked(false); resetControlsTimer(); }}
             style={{
-              position: 'absolute', left: 18, top: '50%',
-              transform: 'translateY(-50%)',
-              ...glassBtn(50),
-              zIndex: 28,
-              boxShadow: '0 2px 16px rgba(0,0,0,0.6)',
+              position: 'absolute',
+              top: '50%', left: '50%',
+              transform: 'translate(-50%, -50%)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+              background: 'rgba(0,0,0,0.52)',
+              backdropFilter: 'blur(14px)',
+              WebkitBackdropFilter: 'blur(14px)',
+              border: '1.5px solid rgba(255,255,255,0.18)',
+              borderRadius: 22, padding: '18px 28px',
+              color: '#fff', cursor: 'pointer', outline: 'none',
+              zIndex: 30,
+              animation: '_lockIn 0.22s ease forwards',
             }}
           >
             <IcUnlock />
+            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.4px', color: 'rgba(255,255,255,0.7)' }}>
+              Tap to Unlock
+            </span>
           </button>
         )}
 
         {/* ── BOTTOM BAR ─────────────────────────────────────────────────────── */}
         {!showSplash && (
-          <div
-            style={{
-              position: 'absolute', bottom: 0, left: 0, right: 0,
-              background: 'linear-gradient(to top, rgba(0,0,0,0.97) 0%, rgba(0,0,0,0.55) 75%, transparent 100%)',
-              padding: isNativeSource ? '44px 14px 20px' : '16px 14px 26px',
-              zIndex: 18,
-              opacity: ctrlVisible ? 1 : 0,
-              pointerEvents: ctrlVisible ? 'auto' : 'none',
-              transition: 'opacity 0.28s ease',
-            }}
-          >
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            background: 'linear-gradient(to top, rgba(0,0,0,0.97) 0%, rgba(0,0,0,0.55) 75%, transparent 100%)',
+            padding: isNativeSource ? '44px 14px 20px' : '16px 14px 26px',
+            zIndex: 18,
+            opacity: ctrlVisible ? 1 : 0,
+            pointerEvents: ctrlVisible ? 'auto' : 'none',
+            transition: 'opacity 0.28s ease',
+          }}>
             {/* ── Seek bar (native only) ─────────────────────────── */}
             {isNativeSource && (
               <>
@@ -1172,33 +1215,25 @@ export function PlayerPage() {
                     if (videoRef.current) videoRef.current.currentTime = getSeekTime(e.clientX);
                   }}
                   onPointerUp={(e) => { e.stopPropagation(); seekDraggingRef.current = false; setSeekDragging(false); }}
-                  style={{
-                    width: '100%', height: 20,
-                    display: 'flex', alignItems: 'center',
-                    cursor: 'pointer', marginBottom: 0,
-                    position: 'relative',
-                  }}
+                  style={{ width: '100%', height: 20, display: 'flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}
                 >
                   <div style={{
                     position: 'absolute', left: 0, right: 0,
                     height: seekDragging ? 5 : 3,
-                    background: 'rgba(255,255,255,0.18)',
-                    borderRadius: 99,
+                    background: 'rgba(255,255,255,0.18)', borderRadius: 99,
                     transition: 'height 0.12s ease',
                   }}>
                     <div style={{
                       position: 'absolute', left: 0, top: 0, bottom: 0,
                       width: `${duration ? (currentTime / duration) * 100 : 0}%`,
-                      background: '#7c3aed',
-                      borderRadius: 99,
+                      background: '#7c3aed', borderRadius: 99,
                     }}>
                       <div style={{
                         position: 'absolute', right: -6, top: '50%',
                         transform: 'translateY(-50%)',
                         width: seekDragging ? 17 : 13,
                         height: seekDragging ? 17 : 13,
-                        borderRadius: '50%',
-                        background: '#fff',
+                        borderRadius: '50%', background: '#fff',
                         boxShadow: '0 0 8px rgba(0,0,0,0.55)',
                         transition: 'width 0.12s ease, height 0.12s ease',
                       }} />
@@ -1263,7 +1298,7 @@ export function PlayerPage() {
                   <button
                     onClick={() => setIsLocked(true)}
                     style={{
-                      padding: '5px 11px',
+                      padding: '5px 10px',
                       background: 'rgba(255,255,255,0.1)',
                       border: '1px solid rgba(255,255,255,0.14)',
                       borderRadius: 8, color: '#fff',
@@ -1274,17 +1309,47 @@ export function PlayerPage() {
                     <IcLock />
                     <span style={{ fontSize: 12, fontWeight: 600 }}>Lock</span>
                   </button>
-                  {/* Sleep timer placeholder — prompt incoming */}
                 </div>
               </>
             )}
 
-            {/* Row 3: Source pills */}
+            {/* Iframe: Lock + Fullscreen row */}
+            {!isNativeSource && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 11 }}>
+                <button
+                  onClick={handleFullscreen}
+                  style={{
+                    padding: '5px 11px',
+                    background: 'rgba(255,255,255,0.1)',
+                    border: '1px solid rgba(255,255,255,0.14)',
+                    borderRadius: 8, color: '#fff',
+                    cursor: 'pointer', outline: 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  {isFullscreen ? <IcExitFs /> : <IcFullscreen />}
+                </button>
+                <button
+                  onClick={() => setIsLocked(true)}
+                  style={{
+                    padding: '5px 10px',
+                    background: 'rgba(255,255,255,0.1)',
+                    border: '1px solid rgba(255,255,255,0.14)',
+                    borderRadius: 8, color: '#fff',
+                    cursor: 'pointer', outline: 'none',
+                    display: 'flex', alignItems: 'center', gap: 5,
+                  }}
+                >
+                  <IcLock />
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>Lock</span>
+                </button>
+              </div>
+            )}
+
+            {/* Source pills */}
             <div style={{
               display: 'flex', gap: 6, alignItems: 'center',
-              overflowX: 'auto',
-              scrollbarWidth: 'none',
-              msOverflowStyle: 'none',
+              overflowX: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none',
             } as React.CSSProperties}>
               <span style={{
                 color: 'rgba(255,255,255,0.28)', fontSize: 11, fontWeight: 600,
@@ -1295,18 +1360,18 @@ export function PlayerPage() {
               {allSources.map(src => (
                 <button
                   key={src.id}
-                  onClick={() => { setActiveSource(src.id); setShowSourceFail(false); }}
+                  onClick={() => {
+                    setActiveSource(src.id);
+                    setShowSourceFail(false);
+                    setIframeLoaded(false);
+                  }}
                   style={pillStyle(activeSource === src.id)}
                 >
                   {src.label}
                 </button>
               ))}
               {activeSource === 'upload' && uploads.length > 1 && uploads.map((u, i) => (
-                <button
-                  key={u.id}
-                  onClick={() => setActiveUploadIdx(i)}
-                  style={pillStyle(activeUploadIdx === i)}
-                >
+                <button key={u.id} onClick={() => setActiveUploadIdx(i)} style={pillStyle(activeUploadIdx === i)}>
                   {u.quality}
                 </button>
               ))}
@@ -1314,8 +1379,7 @@ export function PlayerPage() {
                 <button
                   onClick={() => setShowUploadModal(true)}
                   style={{
-                    padding: '5px 13px',
-                    borderRadius: 999,
+                    padding: '5px 13px', borderRadius: 999,
                     border: '1.5px dashed rgba(124,58,237,0.55)',
                     background: 'rgba(124,58,237,0.1)',
                     color: 'rgba(255,255,255,0.65)',
@@ -1355,13 +1419,11 @@ export function PlayerPage() {
               backdropFilter: 'blur(20px)',
               WebkitBackdropFilter: 'blur(20px)',
               boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
-              fontFamily: 'system-ui, sans-serif',
             }}
           >
             <h3 style={{ color: '#fff', fontSize: 18, fontWeight: 700, margin: '0 0 22px', letterSpacing: '-0.3px' }}>
               Upload Video Source
             </h3>
-
             <div style={{ marginBottom: 14 }}>
               <label style={{ color: 'rgba(255,255,255,0.48)', fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
                 Video URL
@@ -1380,7 +1442,6 @@ export function PlayerPage() {
                 }}
               />
             </div>
-
             <div style={{ display: 'flex', gap: 12, marginBottom: 22 }}>
               <div style={{ flex: 1 }}>
                 <label style={{ color: 'rgba(255,255,255,0.48)', fontSize: 11, fontWeight: 700, display: 'block', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
@@ -1394,8 +1455,7 @@ export function PlayerPage() {
                     background: 'rgba(255,255,255,0.06)',
                     border: '1px solid rgba(255,255,255,0.1)',
                     borderRadius: 11, color: '#fff', fontSize: 14,
-                    outline: 'none', cursor: 'pointer',
-                    appearance: 'none' as const,
+                    outline: 'none', cursor: 'pointer', appearance: 'none' as const,
                   }}
                 >
                   {['480p', '720p', '1080p', '4K'].map(q => (
@@ -1422,7 +1482,6 @@ export function PlayerPage() {
                 />
               </div>
             </div>
-
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setShowUploadModal(false)}
