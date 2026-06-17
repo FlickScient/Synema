@@ -3,6 +3,8 @@ import { Hero } from '../components/Hero';
 import { MovieRow } from '../components/MovieRow';
 import { SkeletonHero } from '../components/Skeleton';
 import type { Movie } from '../types/tmdb';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import {
   fetchTrending,
   fetchNewReleases,
@@ -12,6 +14,8 @@ import {
 } from '../services/tmdb';
 
 export function HomePage() {
+  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [featured, setFeatured] = useState<Movie[]>([]);
   const [trending, setTrending] = useState<Movie[]>([]);
   const [newReleases, setNewReleases] = useState<Movie[]>([]);
@@ -52,10 +56,29 @@ export function HomePage() {
     };
 
     loadMovies();
-  }, []);
 
   return (
     <main className="pt-16 mb-16 md:mb-0">
+     {isAdmin && (
+        <div style={{ position: 'fixed', top: 12, right: 16, zIndex: 50 }}>
+          <button
+            onClick={() => navigate('/admin')}
+            style={{
+              background: 'rgba(124,58,237,0.85)',
+              border: '1px solid rgba(124,58,237,0.5)',
+              borderRadius: 20,
+              padding: '6px 14px',
+              color: '#fff',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            ⚡ Admin
+          </button>
+        </div>
+      )}
       {loading ? (
         <SkeletonHero />
       ) : featured.length > 0 ? (
