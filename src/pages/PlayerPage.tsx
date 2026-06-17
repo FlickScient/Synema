@@ -240,15 +240,13 @@ export function PlayerPage() {
   }, [id, activeSource, archiveUrl, uploads, activeUploadIdx]);
 
   const allSources: { id: SourceType; label: string }[] = [
+    { id: 'upload' as SourceType, label: uploads.length > 0 ? `Upload (${uploads.length})` : 'Upload' },
     { id: 'source1', label: 'Source 1' },
     { id: 'source2', label: 'Source 2' },
     { id: 'source3', label: 'Source 3' },
     { id: 'source4', label: 'Source 4' },
     { id: 'source5', label: 'Source 5' },
     { id: 'archive', label: 'Archive' },
-    ...(uploads.length > 0 || isAdmin
-      ? [{ id: 'upload' as SourceType, label: `Upload${uploads.length > 0 ? ` (${uploads.length})` : ''}` }]
-      : []),
   ];
 
   const nextSource = useCallback(() => {
@@ -304,7 +302,10 @@ export function PlayerPage() {
     if (!id) return;
     supabase.from('movie_uploads').select('id, video_url, quality, language')
       .eq('tmdb_id', parseInt(id))
-      .then(({ data }) => { if (data) setUploads(data); });
+      .then(({ data, error }) => {
+        console.log('uploads query → data:', data, '| error:', error);
+        if (data) setUploads(data);
+      });
   }, [id]);
 
   useEffect(() => {
