@@ -56,6 +56,7 @@ export function HomePage() {
     };
 
     loadMovies();
+   }, []);
 
   return (
     <main className="pt-16 mb-16 md:mb-0">
