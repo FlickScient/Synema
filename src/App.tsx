@@ -14,8 +14,6 @@ import { SeriesPage } from './pages/SeriesPage';
 import { AuthPage } from './pages/AuthPage';
 import { AdminPage } from './pages/AdminPage';
 
-// Inside <Routes>:
-<Route path="/admin" element={<AdminPage />} />
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -42,7 +40,8 @@ function AppLayout() {
         <Route path="/movies" element={<MoviesPage />} />
         <Route path="/series" element={<SeriesPage />} />
         <Route path="/auth" element={<AuthPage />} />
-        <Route
+          <Route path="/admin" element={<AdminPage />} />
+          <Route
           path="*"
           element={
             <main className="pt-20 min-h-screen flex flex-col items-center justify-center">
