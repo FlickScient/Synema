@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
 import { searchArchive } from '../services/archive';
@@ -141,6 +141,11 @@ const IcStar = () => (
 
 export function PlayerPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const tvSeason = searchParams.get('season');
+  const tvEpisode = searchParams.get('episode');
+  const mediaType = searchParams.get('type'); // 'tv' or null (movie)
+  const isTV = mediaType === 'tv';
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   console.log('isAdmin:', isAdmin);
@@ -227,15 +232,25 @@ export function PlayerPage() {
 
   const getSourceUrl = useCallback((): string => {
     if (!id) return '';
+    if (isTV && tvSeason && tvEpisode) {
+      switch (activeSource) {
+        case 'source1': return `https://vidsrc.mov/embed/tv/${id}/${tvSeason}/${tvEpisode}`;
+        case 'source2': return `https://vidlink.pro/tv/${id}?season=${tvSeason}&episode=${tvEpisode}`;
+        case 'source3': return `https://player.videasy.net/tv/${id}/${tvSeason}/${tvEpisode}`;
+        case 'source4': return `https://www.2embed.cc/embedtv/${id}&s=${tvSeason}&e=${tvEpisode}`;
+        case 'source5': return `https://embed.smashystream.com/playere.php?tmdb=${id}&type=tv&season=${tvSeason}&episode=${tvEpisode}`;
+        default: return '';
+      }
+    }
     switch (activeSource) {
       case 'source1': return `https://vidsrc.mov/embed/movie/${id}`;
-case 'source2': return `https://vidlink.pro/movie/${id}`;
-case 'source3': return `https://player.videasy.net/movie/${id}`;
-case 'source4': return `https://www.2embed.cc/embed/${id}`;
-case 'source5': return `https://embed.smashystream.com/playere.php?tmdb=${id}`;
+      case 'source2': return `https://vidlink.pro/movie/${id}`;
+      case 'source3': return `https://player.videasy.net/movie/${id}`;
+      case 'source4': return `https://www.2embed.cc/embed/${id}`;
+      case 'source5': return `https://embed.smashystream.com/playere.php?tmdb=${id}`;
       default: return '';
     }
-  }, [id, activeSource, archiveUrl, uploads, activeUploadIdx]);
+  }, [id, activeSource, archiveUrl, uploads, activeUploadIdx, isTV, tvSeason, tvEpisode]);
 
   const allSources: { id: SourceType; label: string }[] = [
     { id: 'upload' as SourceType, label: uploads.length > 0 ? `Upload (${uploads.length})` : 'Upload' },

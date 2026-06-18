@@ -126,6 +126,49 @@ export const GENRE_MAP: Record<number, string> = {
   37: 'Western',
 };
 
+export interface TVEpisode {
+  id: number;
+  episode_number: number;
+  season_number: number;
+  name: string;
+  overview: string;
+  still_path: string | null;
+  air_date: string;
+  runtime: number | null;
+  vote_average: number;
+}
+
+export interface TVSeason {
+  id: number;
+  season_number: number;
+  name: string;
+  overview: string;
+  poster_path: string | null;
+  air_date: string;
+  episode_count: number;
+  episodes?: TVEpisode[];
+}
+
+export interface TVShow {
+  id: number;
+  name: string;
+  overview: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  first_air_date: string;
+  vote_average: number;
+  vote_count: number;
+  genre_ids: number[];
+  genres: Genre[];
+  number_of_seasons: number;
+  number_of_episodes: number;
+  seasons: TVSeason[];
+  status: string;
+  tagline: string;
+  origin_country: string[];
+  created_by: { id: number; name: string }[];
+}
+
 export const GENRE_ID_MAP: Record<string, number> = {
   Action: 28,
   Thriller: 53,

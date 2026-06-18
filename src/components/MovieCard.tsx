@@ -29,9 +29,15 @@ export function MovieCard({ movie, variant = 'default' }: MovieCardProps) {
     }
   };
 
+  const isTV = movie.media_type === 'tv';
+  const detailPath = isTV ? `/series/${movie.id}` : `/movie/${movie.id}`;
+  const playerPath = isTV
+    ? `/player/${movie.id}?season=1&episode=1&type=tv`
+    : `/player/${movie.id}`;
+
   return (
     <Link
-      to={`/movie/${movie.id}`}
+      to={detailPath}
       className={`group relative flex-shrink-0 overflow-hidden rounded-xl transition-all duration-300 ${
         variant === 'featured'
           ? 'w-48 md:w-56'
@@ -59,7 +65,7 @@ export function MovieCard({ movie, variant = 'default' }: MovieCardProps) {
 
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
           <Link
-            to={`/player/${movie.id}`}
+            to={playerPath}
             onClick={e => e.stopPropagation()}
             className="w-12 h-12 rounded-full bg-synema-violet flex items-center justify-center shadow-lg shadow-synema-violet/30 hover:bg-synema-violet-dark hover:scale-110 transition-all duration-200"
           >

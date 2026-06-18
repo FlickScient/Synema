@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Movie, MovieDetails, Credits, TMDBResponse, MovieVideos } from '../types/tmdb';
+import type { Movie, MovieDetails, Credits, TMDBResponse, MovieVideos, TVShow, TVSeason } from '../types/tmdb';
 
 const API_KEY = '77d781c1d868f9a8c2c79a0e38924d84';
 const BASE_URL = 'https://api.themoviedb.org/3';
@@ -99,6 +99,21 @@ export const getSimilarMovies = async (movieId: number): Promise<Movie[]> => {
 export const getMovieVideos = async (movieId: number): Promise<MovieVideos> => {
   const { data } = await tmdb.get<MovieVideos>(`/movie/${movieId}/videos`);
   return data;
+};
+
+export const getTVShowDetails = async (tvId: number): Promise<TVShow> => {
+  const { data } = await tmdb.get<TVShow>(`/tv/${tvId}`);
+  return data;
+};
+
+export const getTVSeasonDetails = async (tvId: number, seasonNumber: number): Promise<TVSeason> => {
+  const { data } = await tmdb.get<TVSeason>(`/tv/${tvId}/season/${seasonNumber}`);
+  return data;
+};
+
+export const getSimilarTV = async (tvId: number): Promise<Movie[]> => {
+  const { data } = await tmdb.get<TMDBResponse<Movie>>(`/tv/${tvId}/similar`);
+  return data.results;
 };
 
 export const getFeaturedMovies = async (): Promise<Movie[]> => {

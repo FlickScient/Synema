@@ -15,6 +15,7 @@ import { MoviesPage } from './pages/MoviesPage';
 import { SeriesPage } from './pages/SeriesPage';
 import { AuthPage } from './pages/AuthPage';
 import { AdminPage } from './pages/AdminPage';
+import { SeriesDetailPage } from './pages/SeriesDetailPage';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -56,6 +57,7 @@ function AppLayout() {
             <Route path="/my-list" element={<MyListPage />} />
             <Route path="/movies" element={<MoviesPage />} />
             <Route path="/series" element={<SeriesPage />} />
+            <Route path="/series/:id" element={<SeriesDetailPage />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route
