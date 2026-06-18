@@ -8,7 +8,7 @@ import { GENRE_MAP } from '../types/tmdb';
 
 interface MovieCardProps {
   movie: Movie;
-  variant?: 'default' | 'featured';
+  variant?: 'default' | 'featured' | 'grid';
 }
 
 export function MovieCard({ movie, variant = 'default' }: MovieCardProps) {
@@ -17,6 +17,7 @@ export function MovieCard({ movie, variant = 'default' }: MovieCardProps) {
   const inList = isInList(movie.id);
   const posterUrl = getImageUrl(movie.poster_path, POSTER_SIZE);
   const genres = movie.genre_ids?.slice(0, 2).map(id => GENRE_MAP[id]).filter(Boolean);
+  const displayTitle = movie.name || movie.title;
 
   const handleListAction = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -34,6 +35,8 @@ export function MovieCard({ movie, variant = 'default' }: MovieCardProps) {
       className={`group relative flex-shrink-0 overflow-hidden rounded-xl transition-all duration-300 ${
         variant === 'featured'
           ? 'w-48 md:w-56'
+          : variant === 'grid'
+          ? 'w-full'
           : 'w-32 md:w-40'
       }`}
     >
@@ -86,7 +89,7 @@ export function MovieCard({ movie, variant = 'default' }: MovieCardProps) {
 
       <div className="mt-2 space-y-1">
         <h3 className="text-sm font-semibold text-white truncate group-hover:text-synema-violet transition-colors">
-          {movie.title}
+          {displayTitle}
         </h3>
 
         <div className="flex items-center gap-2 text-xs text-gray-400">

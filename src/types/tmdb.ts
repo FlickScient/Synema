@@ -13,6 +13,10 @@ export interface Movie {
   genre_ids: number[];
   original_language: string;
   video: boolean;
+  // TV show fields (optional — TMDB returns these for /discover/tv)
+  name?: string;
+  first_air_date?: string;
+  media_type?: 'movie' | 'tv';
 }
 
 export interface MovieDetails extends Movie {

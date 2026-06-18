@@ -49,6 +49,26 @@ export const fetchByGenre = async (genreId: number, page: number = 1): Promise<M
 export const fetchAction = async (): Promise<Movie[]> => fetchByGenre(28);
 export const fetchDrama = async (): Promise<Movie[]> => fetchByGenre(18);
 
+export interface PagedResult {
+  results: Movie[];
+  totalPages: number;
+  page: number;
+}
+
+export const fetchDiscoverMovies = async (genreId?: number, page: number = 1): Promise<PagedResult> => {
+  const params: Record<string, unknown> = { page, sort_by: 'popularity.desc' };
+  if (genreId) params.with_genres = genreId;
+  const { data } = await tmdb.get<TMDBResponse<Movie>>('/discover/movie', { params });
+  return { results: data.results, totalPages: data.total_pages, page: data.page };
+};
+
+export const fetchDiscoverTV = async (genreId?: number, page: number = 1): Promise<PagedResult> => {
+  const params: Record<string, unknown> = { page, sort_by: 'popularity.desc' };
+  if (genreId) params.with_genres = genreId;
+  const { data } = await tmdb.get<TMDBResponse<Movie>>('/discover/tv', { params });
+  return { results: data.results, totalPages: data.total_pages, page: data.page };
+};
+
 export const searchMovies = async (query: string, genreId?: number): Promise<Movie[]> => {
   if (!query.trim()) return [];
 
