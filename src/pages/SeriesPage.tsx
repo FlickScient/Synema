@@ -3,7 +3,7 @@ import { Tv } from 'lucide-react';
 
 export function SeriesPage() {
   return (
-    <main className="pt-20 min-h-screen pb-20 md:pb-0">
+    <main className="pt-4 md:pt-8 min-h-screen pb-20 md:pb-0">
       <div className="max-w-7xl mx-auto px-4 md:px-8 lg:px-16">
         <div className="flex flex-col items-center justify-center py-32">
           <div className="w-32 h-32 mb-8 rounded-full bg-synema-card flex items-center justify-center">

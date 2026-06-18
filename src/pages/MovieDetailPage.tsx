@@ -93,7 +93,7 @@ export function MovieDetailPage() {
   };
 
   return (
-    <main className="pt-16 min-h-screen">
+    <main className="min-h-screen">
       <div className="relative">
         <div className="absolute inset-0 h-[50vh] md:h-[60vh]">
           {backdropUrl && (

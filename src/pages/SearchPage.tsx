@@ -70,7 +70,7 @@ export function SearchPage() {
   }, [query, selectedGenre, performSearch, setSearchParams]);
 
   return (
-    <main className="pt-20 min-h-screen pb-20 md:pb-0">
+    <main className="pt-4 md:pt-8 min-h-screen pb-20 md:pb-0">
       <div className="max-w-7xl mx-auto px-4 md:px-8 lg:px-16">
         <div className="relative max-w-2xl mx-auto mb-8">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />

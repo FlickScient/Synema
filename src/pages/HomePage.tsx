@@ -59,27 +59,7 @@ export function HomePage() {
    }, []);
 
   return (
-    <main className="pt-16 mb-16 md:mb-0">
-     {isAdmin && (
-        <div style={{ position: 'fixed', top: 12, right: 16, zIndex: 50 }}>
-          <button
-            onClick={() => navigate('/admin')}
-            style={{
-              background: 'rgba(124,58,237,0.85)',
-              border: '1px solid rgba(124,58,237,0.5)',
-              borderRadius: 20,
-              padding: '6px 14px',
-              color: '#fff',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              backdropFilter: 'blur(8px)',
-            }}
-          >
-            ⚡ Admin
-          </button>
-        </div>
-      )}
+    <main className="min-h-screen">
       {loading ? (
         <SkeletonHero />
       ) : featured.length > 0 ? (
