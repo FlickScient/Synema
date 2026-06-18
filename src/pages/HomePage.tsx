@@ -42,7 +42,7 @@ export function HomePage() {
           fetchDrama(),
         ]);
 
-        setFeatured(trendingData.slice(0, 5).filter(m => m.backdrop_path));
+        setFeatured(trendingData.slice(0, 7).filter(m => m.backdrop_path));
         setTrending(trendingData);
         setNewReleases(newReleasesData);
         setTopRated(topRatedData);

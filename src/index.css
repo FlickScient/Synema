@@ -40,4 +40,16 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  .hero-height {
+    height: 100svh;
+  }
+
+  @media (min-width: 768px) {
+    .hero-height {
+      height: 90vh;
+      min-height: 600px;
+      max-height: 900px;
+    }
+  }
 }
