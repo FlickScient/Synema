@@ -1,20 +1,32 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { MovieCard } from '../components/MovieCard';
 import { SkeletonGrid } from '../components/Skeleton';
 import { fetchTrending, fetchTopRated, fetchNewReleases, fetchByGenre } from '../services/tmdb';
 import type { Movie } from '../types/tmdb';
 import { GENRE_ID_MAP } from '../types/tmdb';
 
-const GENRE_FILTERS = ['All', 'Action', 'Thriller', 'Horror', 'Sci-Fi', 'Drama', 'Comedy'];
+const GENRE_FILTERS = ['All', 'Action', 'Thriller', 'Horror', 'Sci-Fi', 'Drama', 'Comedy', 'Animation', 'Adventure', 'Romance', 'Crime', 'Fantasy'];
 
 type SortBy = 'trending' | 'top_rated' | 'new' | 'popular';
 
 export function MoviesPage() {
+  const [searchParams] = useSearchParams();
+  const urlGenre = searchParams.get('genre');
+
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedGenre, setSelectedGenre] = useState('All');
+  const [selectedGenre, setSelectedGenre] = useState(urlGenre && GENRE_ID_MAP[urlGenre] ? urlGenre : 'All');
   const [sortBy, setSortBy] = useState<SortBy>('trending');
   const [page] = useState(1);
+
+  useEffect(() => {
+    if (urlGenre && GENRE_ID_MAP[urlGenre]) {
+      setSelectedGenre(urlGenre);
+    } else if (!urlGenre) {
+      setSelectedGenre('All');
+    }
+  }, [urlGenre]);
 
   useEffect(() => {
     const loadMovies = async () => {

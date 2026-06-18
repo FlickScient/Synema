@@ -129,4 +129,9 @@ export const GENRE_ID_MAP: Record<string, number> = {
   'Sci-Fi': 878,
   Drama: 18,
   Comedy: 35,
+  Animation: 16,
+  Adventure: 12,
+  Romance: 10749,
+  Crime: 80,
+  Fantasy: 14,
 };

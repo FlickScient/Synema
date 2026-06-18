@@ -4,6 +4,7 @@ import { MyListProvider } from './context/MyListContext';
 import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
+import { DesktopTopBar } from './components/DesktopTopBar';
 import { FlickScientOrb } from './components/FlickScient';
 import { HomePage } from './pages/HomePage';
 import { SearchPage } from './pages/SearchPage';
@@ -41,6 +42,9 @@ function AppLayout() {
 
         {/* Mobile navbar (top + bottom bars) */}
         {showChrome && <Navbar />}
+
+        {/* Desktop top bar — search + filter chips */}
+        {showChrome && <DesktopTopBar />}
 
         {/* Page content — mobile gets pt-14 for top bar, desktop gets none */}
         <div className={showChrome ? 'pt-14 pb-16 md:pt-0 md:pb-0' : ''}>
