@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { MovieCard } from '../components/MovieCard';
 import { SkeletonGrid } from '../components/Skeleton';
-import { searchMovies } from '../services/tmdb';
+import { searchMulti } from '../services/tmdb';
 import { GENRE_ID_MAP } from '../types/tmdb';
 import type { Movie } from '../types/tmdb';
 
