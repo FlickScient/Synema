@@ -1,0 +1,1 @@
+- [Package install firewall](package-install-firewall.md) — Vercel build tooling can pull a blocked tar version; install runtime/build dependencies without that optional package for local verification.

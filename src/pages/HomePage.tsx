@@ -11,6 +11,7 @@ import {
   fetchTopRated,
   fetchAction,
   fetchDrama,
+  getAnimeSeries,
 } from '../services/tmdb';
 
 export function HomePage() {
@@ -22,6 +23,7 @@ export function HomePage() {
   const [topRated, setTopRated] = useState<Movie[]>([]);
   const [action, setAction] = useState<Movie[]>([]);
   const [drama, setDrama] = useState<Movie[]>([]);
+  const [anime, setAnime] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,12 +36,14 @@ export function HomePage() {
           topRatedData,
           actionData,
           dramaData,
+          animeData,
         ] = await Promise.all([
           fetchTrending(),
           fetchNewReleases(),
           fetchTopRated(),
           fetchAction(),
           fetchDrama(),
+          getAnimeSeries(),
         ]);
 
         setFeatured(trendingData.slice(0, 7).filter(m => m.backdrop_path));
@@ -48,6 +52,7 @@ export function HomePage() {
         setTopRated(topRatedData);
         setAction(actionData);
         setDrama(dramaData);
+        setAnime(animeData);
       } catch (error) {
         console.error('Failed to load movies:', error);
       } finally {
@@ -72,6 +77,7 @@ export function HomePage() {
         <MovieRow title="Top Rated" movies={topRated} loading={loading} />
         <MovieRow title="Action & Adventure" movies={action} loading={loading} />
         <MovieRow title="Drama" movies={drama} loading={loading} />
+        <MovieRow title="Anime" movies={anime} loading={loading} />
       </div>
     </main>
   );

@@ -17,7 +17,7 @@ export function MovieCard({ movie, variant = 'default' }: MovieCardProps) {
   const inList = isInList(movie.id);
   const posterUrl = getImageUrl(movie.poster_path, POSTER_SIZE);
   const genres = movie.genre_ids?.slice(0, 2).map(id => GENRE_MAP[id]).filter(Boolean);
-  const displayTitle = movie.name || movie.title;
+  const displayTitle = movie.title || movie.name;
 
   const handleListAction = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -50,7 +50,7 @@ export function MovieCard({ movie, variant = 'default' }: MovieCardProps) {
         {!imageError && posterUrl ? (
           <img
             src={posterUrl}
-            alt={movie.title}
+            alt={displayTitle}
             loading="lazy"
             onError={() => setImageError(true)}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
