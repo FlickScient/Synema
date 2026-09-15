@@ -18,27 +18,25 @@ export function SearchPage() {
   const [searched, setSearched] = useState(false);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  const performSearch = useCallback(async (searchQuery: string, genre: string) => {
-    if (!searchQuery.trim()) {
-      setResults([]);
-      setSearched(false);
-      return;
-    }
-
-    setLoading(true);
-    setSearched(true);
-
-    try {
-      const genreId = genre === 'All' ? undefined : GENRE_ID_MAP[genre];
-      const movies = await searchMovies(searchQuery, genreId);
-      setResults(movies);
-    } catch (error) {
-      console.error('Search failed:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+ const performSearch = useCallback(async (searchQuery: string, genre: string) => {
+  if (!searchQuery.trim()) {
+    setResults([]);
+    setSearched(false);
+    return;
+  }
+  setLoading(true);
+  setSearched(true);
+  try {
+    const genreId = genre === 'All' ? undefined : GENRE_ID_MAP[genre];
+    const items = await searchMulti(searchQuery);
+    setResults(genreId ? items.filter(m => m.genre_ids?.includes(genreId)) : items);
+  } catch (error) {
+    console.error('Search failed:', error);
+  } finally {
+    setLoading(false);
+  }
+}, []);
+  
   useEffect(() => {
     const initialQuery = searchParams.get('q');
     if (initialQuery) {
