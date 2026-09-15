@@ -5,6 +5,7 @@ import { supabase } from '../services/supabase';
 import { searchArchive } from '../services/archive';
 import {
   getMovieDetails, getSimilarMovies, getImageUrl,
+  getTVShowDetails, getSimilarTV,
   BACKDROP_SIZE, POSTER_SIZE,
 } from '../services/tmdb';
 import type { MovieDetails, Movie } from '../types/tmdb';
