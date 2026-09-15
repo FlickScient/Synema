@@ -50,27 +50,38 @@ export const fetchAction = async (): Promise<Movie[]> => fetchByGenre(28);
 export const fetchDrama = async (): Promise<Movie[]> => fetchByGenre(18);
 
 export const getAnimeMovies = async (): Promise<Movie[]> => {
-  const { data } = await tmdb.get<TMDBResponse<Movie>>('/discover/movie', {
-    params: {
-      with_genres: 16,
-      with_origin_country: 'JP',
-      sort_by: 'popularity.desc',
-    },
-  });
-  return data.results.map(movie => ({ ...movie, media_type: 'movie' as const }));
+  const pages = await Promise.all(
+    [1, 2, 3, 4, 5].map(page =>
+      tmdb.get<TMDBResponse<Movie>>('/discover/movie', {
+        params: {
+          with_genres: 16,
+          with_origin_country: 'JP',
+          sort_by: 'vote_count.desc',
+          page,
+        },
+      })
+    )
+  );
+  const results = pages.flatMap(p => p.data.results);
+  return results.map(movie => ({ ...movie, media_type: 'movie' as const }));
 };
 
 export const getAnimeSeries = async (): Promise<Movie[]> => {
-  const { data } = await tmdb.get<TMDBResponse<Movie>>('/discover/tv', {
-    params: {
-      with_genres: 16,
-      with_origin_country: 'JP',
-      sort_by: 'popularity.desc',
-    },
-  });
-  return data.results.map(series => ({ ...series, media_type: 'tv' as const }));
+  const pages = await Promise.all(
+    [1, 2, 3, 4, 5].map(page =>
+      tmdb.get<TMDBResponse<Movie>>('/discover/tv', {
+        params: {
+          with_genres: 16,
+          with_origin_country: 'JP',
+          sort_by: 'vote_count.desc',
+          page,
+        },
+      })
+    )
+  );
+  const results = pages.flatMap(p => p.data.results);
+  return results.map(series => ({ ...series, media_type: 'tv' as const }));
 };
-
 export interface PagedResult {
   results: Movie[];
   totalPages: number;
