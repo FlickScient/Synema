@@ -300,11 +300,37 @@ export function PlayerPage() {
 
   // ── Effects ─────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!id) return;
-    getMovieDetails(parseInt(id)).then(setMovie).catch(console.error);
-    getSimilarMovies(parseInt(id)).then(data => setSimilarMovies(data.slice(0, 12))).catch(() => {});
-  }, [id]);
+ useEffect(() => {
+  if (!id) return;
+  const numId = parseInt(id);
+  if (isTV) {
+    getTVShowDetails(numId).then(show => {
+      setMovie({
+        id: show.id,
+        title: show.name,
+        original_title: show.name,
+        overview: show.overview,
+        poster_path: show.poster_path,
+        backdrop_path: show.backdrop_path,
+        release_date: show.first_air_date,
+        vote_average: show.vote_average,
+        vote_count: show.vote_count,
+        genres: show.genres,
+        genre_ids: show.genres?.map(g => g.id) ?? [],
+        popularity: 0,
+        adult: false,
+        original_language: '',
+        video: false,
+        name: show.name,
+        media_type: 'tv',
+      } as any);
+    }).catch(console.error);
+    getSimilarTV(numId).then(data => setSimilarMovies(data.slice(0, 12))).catch(() => {});
+  } else {
+    getMovieDetails(numId).then(setMovie).catch(console.error);
+    getSimilarMovies(numId).then(data => setSimilarMovies(data.slice(0, 12))).catch(() => {});
+  }
+}, [id, isTV]);
 
   useEffect(() => {
     if (!id) return;
