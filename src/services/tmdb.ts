@@ -118,6 +118,16 @@ export const getMovieDetails = async (movieId: number): Promise<MovieDetails> =>
   const { data } = await tmdb.get<MovieDetails>(`/movie/${movieId}`);
   return data;
 };
+export const searchMulti = async (query: string): Promise<Movie[]> => {
+  if (!query.trim()) return [];
+  const { data } = await tmdb.get<TMDBResponse<Movie & { media_type?: string }>>('/search/multi', {
+    params: { query },
+  });
+  return data.results
+    .filter(r => r.media_type === 'movie' || r.media_type === 'tv')
+    .filter(r => (r.vote_count ?? 0) > 0 && r.poster_path)
+    .map(r => ({ ...r, media_type: r.media_type as 'movie' | 'tv' }));
+};
 
 export const getMovieCredits = async (movieId: number): Promise<Credits> => {
   const { data } = await tmdb.get<Credits>(`/movie/${movieId}/credits`);
