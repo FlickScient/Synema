@@ -16,6 +16,10 @@ export function Hero({ movies }: HeroProps) {
   const transitioningRef = useRef(false);
   const { addToList, removeFromList, isInList } = useMyList();
 
+  // Touch swipe tracking — this is what was missing for mobile navigation
+  const touchStartX = useRef(0);
+  const touchDeltaX = useRef(0);
+
   const currentMovie = movies[currentIndex];
   const inList = currentMovie ? isInList(currentMovie.id) : false;
   const backdropUrl = getImageUrl(currentMovie?.backdrop_path, BACKDROP_SIZE);
@@ -34,6 +38,26 @@ export function Hero({ movies }: HeroProps) {
 
   const goNext = () => goTo((currentIndex + 1) % movies.length);
   const goPrev = () => goTo((currentIndex - 1 + movies.length) % movies.length);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchDeltaX.current = 0;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchDeltaX.current = e.touches[0].clientX - touchStartX.current;
+  };
+
+  const handleTouchEnd = () => {
+    const SWIPE_THRESHOLD = 50;
+    if (movies.length <= 1) return;
+    if (touchDeltaX.current > SWIPE_THRESHOLD) {
+      goPrev();
+    } else if (touchDeltaX.current < -SWIPE_THRESHOLD) {
+      goNext();
+    }
+    touchDeltaX.current = 0;
+  };
 
   useEffect(() => {
     if (movies.length <= 1) return;
@@ -66,15 +90,20 @@ export function Hero({ movies }: HeroProps) {
   };
 
   return (
-    <div className="relative w-full overflow-hidden hero-height">
-
-      {/* ── Backdrop ── */}
+    <div
+      className="relative w-full overflow-hidden hero-height touch-pan-y"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Backdrop */}
       <div className={`absolute inset-0 transition-opacity duration-700 ${transitioning ? 'opacity-0' : 'opacity-100'}`}>
         {backdropUrl && (
           <img
             src={backdropUrl}
             alt={currentMovie.title}
             className="w-full h-full object-cover object-center"
+            draggable={false}
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-r from-synema-bg via-synema-bg/85 md:via-synema-bg/70 to-synema-bg/20 md:to-transparent" />
@@ -82,12 +111,10 @@ export function Hero({ movies }: HeroProps) {
         <div className="absolute inset-0 bg-gradient-to-b from-synema-bg/50 via-transparent to-transparent" />
       </div>
 
-      {/* ── Main content ── */}
+      {/* Main content */}
       <div className="relative h-full flex items-end md:items-center">
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 lg:px-16 pb-24 md:pb-0">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 md:gap-12">
-
-            {/* Left – Movie Info */}
             <div
               className={`w-full md:w-[48%] transition-all duration-500 ${
                 transitioning ? 'opacity-0 translate-y-5' : 'opacity-100 translate-y-0'
@@ -98,11 +125,9 @@ export function Hero({ movies }: HeroProps) {
                   {year}
                 </span>
               )}
-
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[3.25rem] font-black text-white leading-tight tracking-tight mb-4">
                 {currentMovie.title}
               </h1>
-
               <div className="flex items-center gap-2 flex-wrap mb-4">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-yellow-500/10 border border-yellow-500/25 rounded-full">
                   <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
@@ -117,24 +142,21 @@ export function Hero({ movies }: HeroProps) {
                   </span>
                 ))}
               </div>
-
               <p className="text-sm md:text-base text-gray-400 leading-relaxed mb-7 line-clamp-2 md:line-clamp-3 max-w-lg">
                 {currentMovie.overview}
               </p>
 
-              {/* CTA Buttons */}
               <div className="flex items-center gap-3 flex-wrap">
                 <Link
                   to={`/player/${currentMovie.id}`}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-brand hover:bg-gradient-brand-hover rounded-xl font-bold text-white text-sm shadow-lg shadow-synema-violet/30 hover:shadow-synema-violet/50 hover:scale-105 active:scale-95 transition-all duration-200"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-brand hover:bg-gradient-brand-hover rounded-xl font-bold text-white text-sm shadow-lg shadow-synema-violet/30 hover:shadow-synema-violet/50 active:scale-95 transition-all duration-200"
                 >
                   <Play className="w-4 h-4 fill-white" />
                   Stream Now
                 </Link>
-
                 <button
                   onClick={handleListAction}
-                  className={`inline-flex items-center gap-2 px-4 py-2.5 border rounded-xl font-semibold text-sm transition-all duration-200 hover:scale-105 active:scale-95 backdrop-blur-sm ${
+                  className={`inline-flex items-center gap-2 px-4 py-2.5 border rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95 backdrop-blur-sm ${
                     inList
                       ? 'border-synema-crimson/60 bg-synema-crimson/20 text-white'
                       : 'border-synema-border bg-synema-card/60 text-white hover:bg-synema-card'
@@ -143,10 +165,9 @@ export function Hero({ movies }: HeroProps) {
                   <Plus className={`w-4 h-4 transition-transform ${inList ? 'rotate-45' : ''}`} />
                   {inList ? 'Remove' : 'Add to List'}
                 </button>
-
                 <Link
                   to={`/movie/${currentMovie.id}`}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-synema-card/60 border border-synema-border rounded-xl font-semibold text-sm text-white hover:bg-synema-card transition-all duration-200 hover:scale-105 active:scale-95 backdrop-blur-sm"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-synema-card/60 border border-synema-border rounded-xl font-semibold text-sm text-white hover:bg-synema-card active:scale-95 transition-all duration-200 backdrop-blur-sm"
                 >
                   <Info className="w-4 h-4" />
                   Details
@@ -154,35 +175,26 @@ export function Hero({ movies }: HeroProps) {
               </div>
             </div>
 
-            {/* Right – Poster Card (desktop only) */}
+            {/* Poster card — desktop only, unchanged */}
             <div
               className={`hidden md:flex md:w-[44%] justify-center items-center transition-all duration-700 ${
                 transitioning ? 'opacity-0 scale-95 translate-y-4' : 'opacity-100 scale-100 translate-y-0'
               }`}
             >
               <div className="relative">
-                {/* Outer ambient glow */}
                 <div className="absolute inset-0 rounded-2xl bg-gradient-brand opacity-25 blur-3xl scale-110 pointer-events-none" />
-
-                {/* Floating poster card */}
                 <div className="relative animate-float">
                   <div
                     className="w-52 lg:w-64 xl:w-72 rounded-2xl overflow-hidden border border-synema-violet/30 shadow-2xl"
                     style={{ backdropFilter: 'blur(16px)' }}
                   >
                     {posterUrl ? (
-                      <img
-                        src={posterUrl}
-                        alt={currentMovie.title}
-                        className="w-full h-auto object-cover"
-                        loading="eager"
-                      />
+                      <img src={posterUrl} alt={currentMovie.title} className="w-full h-auto object-cover" loading="eager" />
                     ) : (
                       <div className="w-full aspect-[2/3] bg-synema-card flex items-center justify-center">
                         <span className="text-gray-500 text-sm">No Poster</span>
                       </div>
                     )}
-                    {/* Glass strip */}
                     <div className="absolute bottom-0 inset-x-0 px-3 py-2.5 bg-gradient-to-t from-synema-bg/95 via-synema-bg/60 to-transparent backdrop-blur-sm">
                       <div className="flex items-center gap-1.5">
                         <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
@@ -192,54 +204,49 @@ export function Hero({ movies }: HeroProps) {
                     </div>
                   </div>
                 </div>
-
-                {/* Floating badge – top right */}
                 <div className="absolute -top-3 -right-4 animate-float-delayed">
                   <div
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-synema-card/80 border border-synema-violet/40 rounded-xl shadow-lg text-xs font-bold text-synema-violet"
                     style={{ backdropFilter: 'blur(12px)' }}
                   >
-                    🎬 Trending
+                    Trending
                   </div>
                 </div>
-
-                {/* Floating badge – bottom left */}
                 <div className="absolute -bottom-3 -left-4 animate-float-slow">
                   <div
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-synema-card/80 border border-synema-crimson/30 rounded-xl shadow-lg text-xs font-bold text-white"
                     style={{ backdropFilter: 'blur(12px)' }}
                   >
-                    ▶ Watch Now
+                    Watch Now
                   </div>
                 </div>
               </div>
             </div>
-
           </div>
         </div>
       </div>
 
-      {/* ── Arrow navigation (desktop) ── */}
+      {/* Arrow navigation — now visible on mobile too, not just desktop */}
       {movies.length > 1 && (
         <>
           <button
             onClick={goPrev}
             aria-label="Previous"
-            className="hidden md:flex absolute left-4 lg:left-6 top-1/2 -translate-y-1/2 w-10 h-10 items-center justify-center bg-synema-card/60 border border-synema-border rounded-full text-white hover:bg-synema-violet/20 hover:border-synema-violet/50 transition-all duration-200 backdrop-blur-sm z-10"
+            className="flex absolute left-2 md:left-4 lg:left-6 top-[38%] md:top-1/2 -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 items-center justify-center bg-synema-card/50 border border-synema-border rounded-full text-white active:scale-90 hover:bg-synema-violet/20 hover:border-synema-violet/50 transition-all duration-150 backdrop-blur-sm z-10"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-4 h-4 md:w-5 md:h-5" />
           </button>
           <button
             onClick={goNext}
             aria-label="Next"
-            className="hidden md:flex absolute right-4 lg:right-6 top-1/2 -translate-y-1/2 w-10 h-10 items-center justify-center bg-synema-card/60 border border-synema-border rounded-full text-white hover:bg-synema-violet/20 hover:border-synema-violet/50 transition-all duration-200 backdrop-blur-sm z-10"
+            className="flex absolute right-2 md:right-4 lg:right-6 top-[38%] md:top-1/2 -translate-y-1/2 w-8 h-8 md:w-10 md:h-10 items-center justify-center bg-synema-card/50 border border-synema-border rounded-full text-white active:scale-90 hover:bg-synema-violet/20 hover:border-synema-violet/50 transition-all duration-150 backdrop-blur-sm z-10"
           >
-            <ChevronRight className="w-5 h-5" />
+            <ChevronRight className="w-4 h-4 md:w-5 md:h-5" />
           </button>
         </>
       )}
 
-      {/* ── Dot indicators ── */}
+      {/* Dot indicators */}
       {movies.length > 1 && (
         <div className="absolute bottom-8 md:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10">
           {movies.map((_, index) => (
