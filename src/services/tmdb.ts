@@ -21,18 +21,18 @@ export const getImageUrl = (path: string | null, size: string = POSTER_SIZE): st
   return `${IMAGE_BASE_URL}${size}${path}`;
 };
 
-export const fetchTrending = async (): Promise<Movie[]> => {
-  const { data } = await tmdb.get<TMDBResponse<Movie>>('/trending/movie/week');
+export const fetchTrending = async (page: number = 1): Promise<Movie[]> => {
+  const { data } = await tmdb.get<TMDBResponse<Movie>>('/trending/movie/week', { params: { page } });
   return data.results;
 };
 
-export const fetchNewReleases = async (): Promise<Movie[]> => {
-  const { data } = await tmdb.get<TMDBResponse<Movie>>('/movie/now_playing');
+export const fetchNewReleases = async (page: number = 1): Promise<Movie[]> => {
+  const { data } = await tmdb.get<TMDBResponse<Movie>>('/movie/now_playing', { params: { page } });
   return data.results;
 };
 
-export const fetchTopRated = async (): Promise<Movie[]> => {
-  const { data } = await tmdb.get<TMDBResponse<Movie>>('/movie/top_rated');
+export const fetchTopRated = async (page: number = 1): Promise<Movie[]> => {
+  const { data } = await tmdb.get<TMDBResponse<Movie>>('/movie/top_rated', { params: { page } });
   return data.results;
 };
 
@@ -259,6 +259,18 @@ export const getTVSeasonDetails = async (tvId: number, seasonNumber: number): Pr
 export const getSimilarTV = async (tvId: number): Promise<Movie[]> => {
   const { data } = await tmdb.get<TMDBResponse<Movie>>(`/tv/${tvId}/similar`);
   return data.results;
+};
+
+export const getAnimeSeriesPage = async (page: number = 1): Promise<Movie[]> => {
+  const { data } = await tmdb.get<TMDBResponse<Movie>>('/discover/tv', {
+    params: {
+      with_genres: 16,
+      with_origin_country: 'JP',
+      sort_by: 'vote_count.desc',
+      page,
+    },
+  });
+  return data.results.map(series => ({ ...series, media_type: 'tv' as const }));
 };
 
 export const getFeaturedMovies = async (): Promise<Movie[]> => {
