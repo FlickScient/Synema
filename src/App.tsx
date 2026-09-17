@@ -16,6 +16,7 @@ import { SeriesPage } from './pages/SeriesPage';
 import { AuthPage } from './pages/AuthPage';
 import { AdminPage } from './pages/AdminPage';
 import { SeriesDetailPage } from './pages/SeriesDetailPage';
+import { CategoryPage } from './pages/CategoryPage';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -34,19 +35,14 @@ function AppLayout() {
   return (
     <div className="flex min-h-screen bg-synema-bg">
       <ScrollToTop />
-
       {/* Desktop sidebar */}
       {showChrome && <Sidebar />}
-
       {/* Main content */}
       <div className={`flex-1 min-w-0 w-full ${showChrome ? 'md:ml-60' : ''}`}>
-
         {/* Mobile navbar (top + bottom bars) */}
         {showChrome && <Navbar />}
-
         {/* Desktop top bar — search + filter chips */}
         {showChrome && <DesktopTopBar />}
-
         {/* Page content — mobile gets pt-14 for top bar, desktop gets none */}
         <div className={showChrome ? 'pt-14 pb-16 md:pt-0 md:pb-0' : ''}>
           <Routes>
@@ -58,6 +54,7 @@ function AppLayout() {
             <Route path="/movies" element={<MoviesPage />} />
             <Route path="/series" element={<SeriesPage />} />
             <Route path="/series/:id" element={<SeriesDetailPage />} />
+            <Route path="/category/:slug" element={<CategoryPage />} />
             <Route path="/auth" element={<AuthPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route
@@ -74,7 +71,6 @@ function AppLayout() {
             />
           </Routes>
         </div>
-
         {isPlayerPage && <FlickScientOrb />}
       </div>
     </div>
