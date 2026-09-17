@@ -1,34 +1,14 @@
 // src/services/r2.ts
-// Uploads files directly to Cloudflare R2 (S3-compatible) from the browser.
-// Uses a presigned PUT URL generated client-side via aws4fetch-style signing
-// is overkill for a single-admin app — instead we sign requests using the
-// AWS SDK's S3RequestPresigner so the actual bytes never touch our own server.
+// Browser-side upload helper. This file NEVER holds your R2 secret key.
+// It asks our own serverless function (/api/get-upload-url) for a
+// short-lived presigned URL, then uploads the file straight to R2 using
+// that URL. Only the public URL prefix is used here — safe to expose.
 
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-
-const ACCOUNT_ID = import.meta.env.VITE_R2_ACCOUNT_ID;
-const ACCESS_KEY_ID = import.meta.env.VITE_R2_ACCESS_KEY_ID;
-const SECRET_ACCESS_KEY = import.meta.env.VITE_R2_SECRET_ACCESS_KEY;
-const BUCKET_NAME = import.meta.env.VITE_R2_BUCKET_NAME;
-const PUBLIC_URL = import.meta.env.VITE_R2_PUBLIC_URL; // e.g. https://xxxx.r2.dev or custom domain, no trailing slash
-
-const s3 = new S3Client({
-  region: 'auto',
-  endpoint: `https://${ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: ACCESS_KEY_ID,
-    secretAccessKey: SECRET_ACCESS_KEY,
-  },
-});
-
-function sanitizeFileName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, '_');
-}
+const PUBLIC_URL = import.meta.env.VITE_R2_PUBLIC_URL; // e.g. https://pub-xxxx.r2.dev, no trailing slash
 
 /**
- * Uploads a file to R2 with progress reporting.
- * Returns the public URL once the upload completes.
+ * Uploads a file to R2 with progress reporting, via a presigned URL
+ * obtained from our own backend (api/get-upload-url).
  *
  * @param file        The File object (from an <input type="file"> picker)
  * @param pathPrefix  A folder-like prefix, e.g. the tmdb_id or a slug
@@ -39,29 +19,34 @@ export async function uploadToR2(
   pathPrefix: string,
   onProgress?: (percent: number) => void
 ): Promise<string> {
-  if (!ACCOUNT_ID || !ACCESS_KEY_ID || !SECRET_ACCESS_KEY || !BUCKET_NAME || !PUBLIC_URL) {
-    throw new Error(
-      'R2 is not configured. Check VITE_R2_ACCOUNT_ID, VITE_R2_ACCESS_KEY_ID, ' +
-      'VITE_R2_SECRET_ACCESS_KEY, VITE_R2_BUCKET_NAME, and VITE_R2_PUBLIC_URL in your env.'
-    );
+  if (!PUBLIC_URL) {
+    throw new Error('VITE_R2_PUBLIC_URL is not set. Check your Vercel environment variables.');
   }
 
-  const key = `${pathPrefix}/${Date.now()}-${sanitizeFileName(file.name)}`;
-
-  // Generate a presigned PUT URL so the actual file bytes go straight from
-  // the browser to R2 — never through any server of ours.
-  const command = new PutObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: key,
-    ContentType: file.type || 'application/octet-stream',
+  // 1. Ask our backend for a presigned upload URL (secret key stays server-side)
+  const res = await fetch('/api/get-upload-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      pathPrefix,
+    }),
   });
-  const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
 
-  // Use XMLHttpRequest instead of fetch so we get real upload progress events
-  // — important for multi-GB video files on mobile connections.
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to get upload URL (${res.status})`);
+  }
+
+  const { uploadUrl, key } = await res.json();
+
+  // 2. Upload the actual file bytes directly to R2 using that URL.
+  // XMLHttpRequest instead of fetch so we get real progress events —
+  // important for multi-GB video files on mobile connections.
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('PUT', signedUrl);
+    xhr.open('PUT', uploadUrl);
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
 
     xhr.upload.onprogress = (event) => {
@@ -84,6 +69,7 @@ export async function uploadToR2(
     xhr.send(file);
   });
 
+  // 3. Build the final public URL from the key R2 stored it under.
   return `${PUBLIC_URL}/${key}`;
 }
 
