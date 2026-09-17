@@ -130,7 +130,7 @@ export function SeriesPage() {
 
         {/* Grid */}
         {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-6">
             {Array.from({ length: 20 }).map((_, i) => (
               <div key={i} className="w-full aspect-[2/3] bg-synema-card rounded-xl animate-pulse" />
             ))}
@@ -141,7 +141,7 @@ export function SeriesPage() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-6">
               {series.map(show => (
                 <MovieCard key={`${show.id}-${show.name}`} movie={show} variant="grid" />
               ))}
