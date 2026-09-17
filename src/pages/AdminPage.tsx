@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
 import { searchTMDB, getImageUrl, POSTER_SIZE } from '../services/tmdb';
+import { uploadToR2, checkFileSize } from '../services/r2';
 
 interface Upload {
   id: string;
@@ -17,7 +18,6 @@ interface Upload {
 export function AdminPage() {
   const { user, isAdmin, loading } = useAuth();
   const navigate = useNavigate();
-
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [loadingUploads, setLoadingUploads] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -26,7 +26,14 @@ export function AdminPage() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<any | null>(null);
-  const [uploadUrl, setUploadUrl] = useState('');
+
+  // --- Replaces the old uploadUrl text field ---
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [fileWarning, setFileWarning] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadStage, setUploadStage] = useState<'idle' | 'uploading' | 'saving'>('idle');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   const [uploadQuality, setUploadQuality] = useState('1080p');
   const [uploadLanguage, setUploadLanguage] = useState('English');
   const [saving, setSaving] = useState(false);
@@ -90,26 +97,61 @@ export function AdminPage() {
     setSearching(false);
   };
 
-  const handleSave = async () => {
-    if (!selectedMovie || !uploadUrl) return;
-    setSaving(true);
-    const { data, error } = await supabase.from('movie_uploads').insert({
-      tmdb_id: selectedMovie.id,
-      title: selectedMovie.title,
-      video_url: uploadUrl,
-      quality: uploadQuality,
-      language: uploadLanguage,
-      uploaded_by: user?.id,
-    }).select().single();
-    if (!error && data) {
-      setUploads(prev => [data, ...prev]);
-      setShowAddModal(false);
-      setSelectedMovie(null);
-      setUploadUrl('');
-      setSearchQuery('');
-      setSearchResults([]);
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setUploadError(null);
+    setFileWarning(null);
+    if (file) {
+      const warning = checkFileSize(file);
+      if (warning) setFileWarning(warning);
     }
-    setSaving(false);
+    setVideoFile(file);
+  };
+
+  const handleSave = async () => {
+    if (!selectedMovie || !videoFile) return;
+    setSaving(true);
+    setUploadError(null);
+
+    try {
+      // 1. Upload the actual video file to R2
+      setUploadStage('uploading');
+      setUploadProgress(0);
+      const videoUrl = await uploadToR2(
+        videoFile,
+        `movies/${selectedMovie.id}`,
+        (percent) => setUploadProgress(percent)
+      );
+
+      // 2. Save the resulting public URL into Supabase
+      setUploadStage('saving');
+      const { data, error } = await supabase.from('movie_uploads').insert({
+        tmdb_id: selectedMovie.id,
+        title: selectedMovie.title,
+        video_url: videoUrl,
+        quality: uploadQuality,
+        language: uploadLanguage,
+        uploaded_by: user?.id,
+      }).select().single();
+
+      if (error) throw error;
+
+      if (data) {
+        setUploads(prev => [data, ...prev]);
+        setShowAddModal(false);
+        setSelectedMovie(null);
+        setVideoFile(null);
+        setFileWarning(null);
+        setUploadProgress(null);
+        setSearchQuery('');
+        setSearchResults([]);
+      }
+    } catch (err: any) {
+      setUploadError(err?.message || 'Upload failed. Please try again.');
+    } finally {
+      setUploadStage('idle');
+      setSaving(false);
+    }
   };
 
   const handleRoleChange = async (userId: string, newRole: string) => {
@@ -123,7 +165,6 @@ export function AdminPage() {
       backgroundColor: '#08090d',
       paddingBottom: 40,
     } as React.CSSProperties,
-
     header: {
       display: 'flex',
       alignItems: 'center',
@@ -135,7 +176,6 @@ export function AdminPage() {
       backgroundColor: '#08090d',
       zIndex: 10,
     } as React.CSSProperties,
-
     tab: (active: boolean): React.CSSProperties => ({
       padding: '8px 18px',
       borderRadius: 999,
@@ -146,7 +186,6 @@ export function AdminPage() {
       fontWeight: 500,
       cursor: 'pointer',
     }),
-
     card: {
       background: 'rgba(255,255,255,0.03)',
       border: '1px solid rgba(255,255,255,0.07)',
@@ -154,7 +193,6 @@ export function AdminPage() {
       padding: '14px 16px',
       marginBottom: 10,
     } as React.CSSProperties,
-
     input: {
       width: '100%',
       background: 'rgba(255,255,255,0.05)',
@@ -166,7 +204,19 @@ export function AdminPage() {
       outline: 'none',
       boxSizing: 'border-box' as const,
     } as React.CSSProperties,
-
+    fileButton: {
+      width: '100%',
+      background: 'rgba(255,255,255,0.05)',
+      border: '1px dashed rgba(255,255,255,0.2)',
+      borderRadius: 10,
+      padding: '18px 14px',
+      color: 'rgba(255,255,255,0.6)',
+      fontSize: 13,
+      outline: 'none',
+      boxSizing: 'border-box' as const,
+      textAlign: 'center' as const,
+      cursor: 'pointer',
+    } as React.CSSProperties,
     modal: {
       position: 'fixed' as const,
       inset: 0,
@@ -177,7 +227,6 @@ export function AdminPage() {
       alignItems: 'flex-end',
       padding: 0,
     } as React.CSSProperties,
-
     modalBox: {
       width: '100%',
       background: '#111318',
@@ -314,11 +363,11 @@ export function AdminPage() {
 
       {/* ADD UPLOAD MODAL */}
       {showAddModal && (
-        <div style={S.modal} onClick={() => setShowAddModal(false)}>
+        <div style={S.modal} onClick={() => !saving && setShowAddModal(false)}>
           <div style={S.modalBox} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <span style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Add Upload</span>
-              <button onClick={() => setShowAddModal(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 22, cursor: 'pointer' }}>×</button>
+              <button onClick={() => !saving && setShowAddModal(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 22, cursor: 'pointer' }}>×</button>
             </div>
 
             {/* Movie search */}
@@ -340,6 +389,7 @@ export function AdminPage() {
                     {searching ? '…' : 'Search'}
                   </button>
                 </div>
+
                 {searchResults.map(movie => (
                   <div
                     key={movie.id}
@@ -369,31 +419,80 @@ export function AdminPage() {
                     <div style={{ color: '#fff', fontSize: 13, fontWeight: 500 }}>{selectedMovie.title}</div>
                     <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>TMDB ID: {selectedMovie.id}</div>
                   </div>
-                  <button onClick={() => setSelectedMovie(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 16 }}>×</button>
+                  <button
+                    onClick={() => { setSelectedMovie(null); setVideoFile(null); setFileWarning(null); }}
+                    disabled={saving}
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 16 }}
+                  >
+                    ×
+                  </button>
                 </div>
 
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 6 }}>Direct .mp4 URL</div>
-                <input style={{ ...S.input, marginBottom: 10 }} type="url" placeholder="https://example.com/movie.mp4" value={uploadUrl} onChange={e => setUploadUrl(e.target.value)} />
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 6 }}>Video File</div>
+                <label style={S.fileButton}>
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={handleFileSelect}
+                    disabled={saving}
+                    style={{ display: 'none' }}
+                  />
+                  {videoFile ? (
+                    <span style={{ color: '#fff' }}>
+                      🎬 {videoFile.name} ({(videoFile.size / (1024 * 1024)).toFixed(0)} MB)
+                    </span>
+                  ) : (
+                    <span>Tap to choose a video from your phone</span>
+                  )}
+                </label>
 
-                <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                {fileWarning && (
+                  <div style={{ color: '#facc15', fontSize: 11, marginTop: 8 }}>⚠ {fileWarning}</div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 16, marginBottom: 16 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 6 }}>Quality</div>
-                    <select value={uploadQuality} onChange={e => setUploadQuality(e.target.value)} style={{ ...S.input, padding: '10px 12px' }}>
+                    <select value={uploadQuality} onChange={e => setUploadQuality(e.target.value)} disabled={saving} style={{ ...S.input, padding: '10px 12px' }}>
                       {['480p', '720p', '1080p', '4K'].map(q => <option key={q} value={q} style={{ background: '#111' }}>{q}</option>)}
                     </select>
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 6 }}>Language</div>
-                    <input style={{ ...S.input, padding: '10px 12px' }} placeholder="English" value={uploadLanguage} onChange={e => setUploadLanguage(e.target.value)} />
+                    <input
+                      style={{ ...S.input, padding: '10px 12px' }}
+                      placeholder="English"
+                      value={uploadLanguage}
+                      onChange={e => setUploadLanguage(e.target.value)}
+                      disabled={saving}
+                    />
                   </div>
                 </div>
 
+                {/* Progress / status */}
+                {uploadStage === 'uploading' && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${uploadProgress ?? 0}%`, background: '#7c3aed', transition: 'width 0.2s' }} />
+                    </div>
+                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 6 }}>
+                      Uploading… {uploadProgress ?? 0}% — large files may take a few minutes on mobile data
+                    </div>
+                  </div>
+                )}
+                {uploadStage === 'saving' && (
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginBottom: 14 }}>Saving details…</div>
+                )}
+                {uploadError && (
+                  <div style={{ color: '#f87171', fontSize: 11, marginBottom: 14 }}>⚠ {uploadError}</div>
+                )}
+
                 <button
                   onClick={handleSave}
-                  disabled={!uploadUrl || saving}
-                  style={{ width: '100%', padding: '13px 0', borderRadius: 12, border: 'none', background: !uploadUrl || saving ? 'rgba(124,58,237,0.3)' : '#7c3aed', color: '#fff', fontWeight: 600, fontSize: 15, cursor: !uploadUrl || saving ? 'not-allowed' : 'pointer' }}
+                  disabled={!videoFile || saving}
+                  style={{ width: '100%', padding: '13px 0', borderRadius: 12, border: 'none', background: !videoFile || saving ? 'rgba(124,58,237,0.3)' : '#7c3aed', color: '#fff', fontWeight: 600, fontSize: 15, cursor: !videoFile || saving ? 'not-allowed' : 'pointer' }}
                 >
-                  {saving ? 'Saving…' : 'Save Upload'}
+                  {uploadStage === 'uploading' ? `Uploading ${uploadProgress ?? 0}%…` : uploadStage === 'saving' ? 'Saving…' : 'Upload & Save'}
                 </button>
               </>
             )}
@@ -402,5 +501,4 @@ export function AdminPage() {
       )}
     </div>
   );
-}
-  
+      }
