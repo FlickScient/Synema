@@ -3,6 +3,7 @@ import type { Movie, MovieDetails, Credits, TMDBResponse, MovieVideos, TVShow, T
 
 const API_KEY = '77d781c1d868f9a8c2c79a0e38924d84';
 const BASE_URL = 'https://api.themoviedb.org/3';
+
 export const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p';
 export const POSTER_SIZE = '/w500';
 export const BACKDROP_SIZE = '/original';
@@ -82,29 +83,132 @@ export const getAnimeSeries = async (): Promise<Movie[]> => {
   const results = pages.flatMap(p => p.data.results);
   return results.map(series => ({ ...series, media_type: 'tv' as const }));
 };
+
+// ============================================================
+// Discover system — Type / Catalog / Genre / Industry filters
+// ============================================================
+
 export interface PagedResult {
   results: Movie[];
   totalPages: number;
   page: number;
 }
 
-export const fetchDiscoverMovies = async (genreId?: number, page: number = 1): Promise<PagedResult> => {
-  const params: Record<string, unknown> = { page, sort_by: 'popularity.desc' };
+export type CatalogId = 'popular' | 'top_rated' | 'newest' | 'most_voted';
+
+const CATALOG_SORT: Record<CatalogId, string> = {
+  popular: 'popularity.desc',
+  top_rated: 'vote_average.desc',
+  newest: 'primary_release_date.desc',
+  most_voted: 'vote_count.desc',
+};
+
+export const CATALOGS: { id: CatalogId; label: string }[] = [
+  { id: 'popular', label: 'Popular' },
+  { id: 'top_rated', label: 'Top Rated' },
+  { id: 'newest', label: 'Newest' },
+  { id: 'most_voted', label: 'Most Voted' },
+];
+
+export const MOVIE_GENRES: { id: number; name: string }[] = [
+  { id: 28, name: 'Action' },
+  { id: 12, name: 'Adventure' },
+  { id: 16, name: 'Animation' },
+  { id: 35, name: 'Comedy' },
+  { id: 80, name: 'Crime' },
+  { id: 99, name: 'Documentary' },
+  { id: 18, name: 'Drama' },
+  { id: 10751, name: 'Family' },
+  { id: 14, name: 'Fantasy' },
+  { id: 36, name: 'History' },
+  { id: 27, name: 'Horror' },
+  { id: 10402, name: 'Music' },
+  { id: 9648, name: 'Mystery' },
+  { id: 10749, name: 'Romance' },
+  { id: 878, name: 'Science Fiction' },
+  { id: 10770, name: 'TV Movie' },
+  { id: 53, name: 'Thriller' },
+  { id: 10752, name: 'War' },
+  { id: 37, name: 'Western' },
+];
+
+export const TV_GENRES: { id: number; name: string }[] = [
+  { id: 10759, name: 'Action & Adventure' },
+  { id: 16, name: 'Animation' },
+  { id: 35, name: 'Comedy' },
+  { id: 80, name: 'Crime' },
+  { id: 99, name: 'Documentary' },
+  { id: 18, name: 'Drama' },
+  { id: 10751, name: 'Family' },
+  { id: 10762, name: 'Kids' },
+  { id: 9648, name: 'Mystery' },
+  { id: 10763, name: 'News' },
+  { id: 10764, name: 'Reality' },
+  { id: 10765, name: 'Sci-Fi & Fantasy' },
+  { id: 10766, name: 'Soap' },
+  { id: 10767, name: 'Talk' },
+  { id: 10768, name: 'War & Politics' },
+  { id: 37, name: 'Western' },
+];
+
+export const INDUSTRIES: { code: string; label: string }[] = [
+  { code: 'en', label: 'Hollywood' },
+  { code: 'hi', label: 'Bollywood' },
+  { code: 'ja', label: 'Japanese' },
+  { code: 'ko', label: 'Korean' },
+  { code: 'zh', label: 'Chinese' },
+  { code: 'es', label: 'Spanish' },
+  { code: 'fr', label: 'French' },
+  { code: 'de', label: 'German' },
+  { code: 'it', label: 'Italian' },
+  { code: 'th', label: 'Thai' },
+  { code: 'tr', label: 'Turkish' },
+  { code: 'ta', label: 'Tamil' },
+  { code: 'te', label: 'Telugu' },
+  { code: 'ms', label: 'Malay' },
+  { code: 'id', label: 'Indonesian' },
+];
+
+export interface DiscoverOptions {
+  genreId?: number;
+  catalog?: CatalogId;
+  language?: string;
+  page?: number;
+}
+
+export const fetchDiscoverMovies = async (options: DiscoverOptions = {}): Promise<PagedResult> => {
+  const { genreId, catalog = 'popular', language, page = 1 } = options;
+  const params: Record<string, unknown> = {
+    page,
+    sort_by: CATALOG_SORT[catalog],
+  };
   if (genreId) params.with_genres = genreId;
+  if (language) params.with_original_language = language;
+  if (catalog === 'top_rated' || catalog === 'most_voted') {
+    params['vote_count.gte'] = 50;
+  }
   const { data } = await tmdb.get<TMDBResponse<Movie>>('/discover/movie', { params });
   return { results: data.results, totalPages: data.total_pages, page: data.page };
 };
 
-export const fetchDiscoverTV = async (genreId?: number, page: number = 1): Promise<PagedResult> => {
-  const params: Record<string, unknown> = { page, sort_by: 'popularity.desc' };
+export const fetchDiscoverTV = async (options: DiscoverOptions = {}): Promise<PagedResult> => {
+  const { genreId, catalog = 'popular', language, page = 1 } = options;
+  const sortBy = catalog === 'newest' ? 'first_air_date.desc' : CATALOG_SORT[catalog];
+  const params: Record<string, unknown> = {
+    page,
+    sort_by: sortBy,
+  };
   if (genreId) params.with_genres = genreId;
+  if (language) params.with_original_language = language;
+  if (catalog === 'top_rated' || catalog === 'most_voted') {
+    params['vote_count.gte'] = 50;
+  }
   const { data } = await tmdb.get<TMDBResponse<Movie>>('/discover/tv', { params });
   return { results: data.results, totalPages: data.total_pages, page: data.page };
 };
 
 export const searchMovies = async (query: string, genreId?: number): Promise<Movie[]> => {
   if (!query.trim()) return [];
-
   const { data } = await tmdb.get<TMDBResponse<Movie>>('/search/movie', {
     params: {
       query,
@@ -114,19 +218,17 @@ export const searchMovies = async (query: string, genreId?: number): Promise<Mov
   return data.results;
 };
 
+export const searchTV = async (query: string, genreId?: number): Promise<Movie[]> => {
+  if (!query.trim()) return [];
+  const { data } = await tmdb.get<TMDBResponse<Movie>>('/search/tv', {
+    params: { query, with_genres: genreId },
+  });
+  return data.results;
+};
+
 export const getMovieDetails = async (movieId: number): Promise<MovieDetails> => {
   const { data } = await tmdb.get<MovieDetails>(`/movie/${movieId}`);
   return data;
-};
-export const searchMulti = async (query: string): Promise<Movie[]> => {
-  if (!query.trim()) return [];
-  const { data } = await tmdb.get<TMDBResponse<Movie & { media_type?: string }>>('/search/multi', {
-    params: { query },
-  });
-  return data.results
-    .filter(r => r.media_type === 'movie' || r.media_type === 'tv')
-    .filter(r => (r.vote_count ?? 0) > 0 && r.poster_path)
-    .map(r => ({ ...r, media_type: r.media_type as 'movie' | 'tv' }));
 };
 
 export const getMovieCredits = async (movieId: number): Promise<Credits> => {
