@@ -14,15 +14,17 @@ const ARCHIVE_API = 'https://archive.org';
 
 export async function searchArchive(title: string): Promise<ArchiveItem | null> {
   try {
-    const query = encodeURIComponent(
-      `title:(${title}) AND mediatype:movies AND subject:(feature film OR public domain)`
-    );
+    // Previously this also required subject:(feature film OR public domain),
+    // which demands an exact metadata tag match that almost no items have —
+    // that's what caused every search to return zero results. mediatype:movies
+    // already scopes correctly to films/video content on Archive.org.
+    const query = encodeURIComponent(`title:(${title}) AND mediatype:(movies)`);
     const url = `${ARCHIVE_API}/advancedsearch.php?q=${query}&fl[]=identifier,title,year,description&rows=5&output=json`;
 
     const res = await fetch(url);
     const data = await res.json();
-
     const docs = data?.response?.docs;
+
     if (!docs || docs.length === 0) return null;
 
     // Pick best match — closest title
@@ -32,8 +34,8 @@ export async function searchArchive(title: string): Promise<ArchiveItem | null> 
     // Get metadata to find actual video file
     const metaRes = await fetch(`${ARCHIVE_API}/metadata/${identifier}`);
     const meta = await metaRes.json();
-
     const files: any[] = meta?.files || [];
+
     const videoFile = files.find(
       f => f.name?.endsWith('.mp4') || f.name?.endsWith('.ogv') || f.name?.endsWith('.mpeg')
     );
